@@ -4,8 +4,8 @@ import WalletSpace from './WalletSpace'
 const Navbar = () => {
     return (
         <Flex p="3" alignItems="center">
-            <Box>
-                Logo
+            <Box alignItems="center">
+                <div>Logo</div>
             </Box>
             <Spacer />
             <WalletSpace />
