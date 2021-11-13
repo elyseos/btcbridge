@@ -1,15 +1,13 @@
-import { useRef, useEffect } from "react"
-import { Box, Button, ButtonGroup, Stack, Text } from "@chakra-ui/react"
+import { Box, Button, Stack, Text } from "@chakra-ui/react"
 import { BiWallet, BiCopy } from 'react-icons/bi'
 import { AiOutlineDisconnect } from 'react-icons/ai'
-import { UnsupportedChainIdError, useWeb3React } from "@web3-react/core"
+import { useWeb3React } from "@web3-react/core"
 import Jazzicon, { jsNumberForAddress } from 'react-jazzicon'
 import { injected } from "./wallet/connector"
 
 
 const WalletSpace = () => {
-    const { active, account, library, connector, activate, deactivate, error, chainId } = useWeb3React()
-    const balance = useRef(0)
+    const { active, account, activate, deactivate } = useWeb3React()
 
     async function connect() {
         try {
