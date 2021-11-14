@@ -2,8 +2,6 @@ import { Box, Button, Stack, Text } from "@chakra-ui/react"
 import { IconContext } from 'react-icons'
 import { BiWallet, BiCopy } from 'react-icons/bi'
 import { AiOutlineDisconnect, AiOutlineWarning } from 'react-icons/ai'
-import { GrStatusWarning } from 'react-icons/gr'
-import { FaBeer } from 'react-icons/fa'
 import { UnsupportedChainIdError, useWeb3React } from "@web3-react/core"
 import Jazzicon, { jsNumberForAddress } from 'react-jazzicon'
 import { injected } from "./wallet/connector"
@@ -40,16 +38,18 @@ const WalletSpace = () => {
             {/* {!account && <IconContext.Provider value={{ color: 'orange', size: '25px' }}>
                 <AiOutlineWarning />
             </IconContext.Provider>} */}
-            <Button colorScheme=
-                {active ? "gray" :
-                    "purple"} onClick={active ? () => { navigator.clipboard.writeText(account) } : connect}>
-                <Stack alignItems="center" direction="row" >
-                    {active ? <Jazzicon diameter={20} seed={jsNumberForAddress(account)} /> : <BiWallet />}
-                    <Box><Text isTruncated maxWidth="28">{active ? account : 'Connect'}</Text></Box>
-                    {active && <BiCopy />}
-                </Stack>
-                {active && <Box alignItems="center"></Box>}
-            </Button>
+            {error instanceof UnsupportedChainIdError ||
+                <Button colorScheme=
+                    {active ? "gray" :
+                        "purple"} onClick={active ? () => { navigator.clipboard.writeText(account) } : connect}>
+                    <Stack alignItems="center" direction="row" >
+                        {active ? <Jazzicon diameter={20} seed={jsNumberForAddress(account)} /> : <BiWallet />}
+                        <Box><Text isTruncated maxWidth={{ sm: "28", base: "10" }}>{active ? account : 'Connect'}</Text></Box>
+                        {active && <BiCopy />}
+                    </Stack>
+                    {active && <Box alignItems="center"></Box>}
+                </Button>
+            }
             {active && <Button colorScheme="red" alignItems=" center" onClick={disconnect}><AiOutlineDisconnect /></Button>}
         </Stack >
     )

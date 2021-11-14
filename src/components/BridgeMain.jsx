@@ -7,21 +7,29 @@ import { Bitcoin, Fantom } from "@renproject/chains"
 import RenJS from "@renproject/ren";
 import { validate } from 'bitcoin-address-validation';
 
+const SWAP_CONTRACT_ADDRESS = ''
+const ELYS_CONTRACT_ADDRESS = '0xd89cc0d2A28a769eADeF50fFf74EBC07405DB9Fc'
+const FTM_CONTRACT_ADDRESS = '0x21be370D5312f44cB42ce377BC9b8a0cEF1A4C83'
+const RENBTC_CONTRACT__ADDRESS = '0xdbf31df14b66535af65aac99c32e9ea844e14501'
+const ZOO_ROUTER_ADDRESS = '0x40b12a3E261416fF0035586ff96e23c2894560f2'
+const HYPER_ROUTER_ADDRESS = '0x53c153a0df7E050BbEFbb70eE9632061f12795fB'
+
 const BridgeMain = () => {
     const { account, library } = useWeb3React()
     const [estimatedBtcOut, setEstimateBtcOut] = useState(0)
+
     const zooRouter = useRef(null)
     const hyperRouter = useRef(null)
+    const elysContract = useRef(null)
     const routerAbi = useRef(null)
     const tokenAbi = useRef(null)
 
-    const [elysIn, setElysIn] = useState(0)
+    const [elysIn, setElysIn] = useState('')
     const elysBalance = useRef(0)
     const btcAddress = useRef(null)
 
     const getElysBalance = async () => {
-        let elysContract = new ethers.Contract('0xd89cc0d2A28a769eADeF50fFf74EBC07405DB9Fc', tokenAbi.current, library.getSigner())
-        let balance = await elysContract.balanceOf(account)
+        let balance = await elysContract.current.balanceOf(account)
         elysBalance.current = ethers.utils.formatUnits(balance, 5)
     }
 
@@ -63,14 +71,18 @@ const BridgeMain = () => {
             'function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts)'
         ]
         tokenAbi.current = [
-            'function balanceOf(address _owner) public view returns(uint256 balance)'
+            'function balanceOf(address _owner) public view returns(uint256 balance)',
+            'function approve(address _spender, uint256 _value) public returns (bool success)',
+            'function allowance(address _owner, address _spender) public view returns (uint256 remaining)'
         ]
     }, [])
 
     useEffect(() => {
         if (account) {
-            zooRouter.current = new ethers.Contract('0x40b12a3E261416fF0035586ff96e23c2894560f2', routerAbi.current, library.getSigner())
-            hyperRouter.current = new ethers.Contract('0x53c153a0df7E050BbEFbb70eE9632061f12795fB', routerAbi.current, library.getSigner())
+
+            elysContract.current = new ethers.Contract(ELYS_CONTRACT_ADDRESS, tokenAbi.current, library.getSigner())
+            zooRouter.current = new ethers.Contract(ZOO_ROUTER_ADDRESS, routerAbi.current, library.getSigner())
+            hyperRouter.current = new ethers.Contract(HYPER_ROUTER_ADDRESS, routerAbi.current, library.getSigner())
             getElysBalance()
         }
         else {
@@ -92,8 +104,8 @@ const BridgeMain = () => {
                 return
             }
 
-            let ftmOut = (await zooRouter.current.getAmountsOut(ethers.utils.parseUnits(elysInputValue, 5), ['0xd89cc0d2A28a769eADeF50fFf74EBC07405DB9Fc', '0x21be370D5312f44cB42ce377BC9b8a0cEF1A4C83']))[1]
-            let renBtcOut = (await hyperRouter.current.getAmountsOut(ftmOut, ['0x21be370D5312f44cB42ce377BC9b8a0cEF1A4C83', '0xdbf31df14b66535af65aac99c32e9ea844e14501']))[1]
+            let ftmOut = (await zooRouter.current.getAmountsOut(ethers.utils.parseUnits(elysInputValue, 5), [ELYS_CONTRACT_ADDRESS, FTM_CONTRACT_ADDRESS]))[1]
+            let renBtcOut = (await hyperRouter.current.getAmountsOut(ftmOut, [FTM_CONTRACT_ADDRESS, RENBTC_CONTRACT__ADDRESS]))[1]
             setEstimateBtcOut(ethers.utils.formatUnits(renBtcOut.mul(9985).div(10000), 8)) // adjust for RenVM fees
         }
         updateEstimatedBtc()
@@ -116,9 +128,19 @@ const BridgeMain = () => {
         else return false
     }
 
+    const approveElysToContract = async () => {
+        setElysIn(String(Number(elysIn)))
+
+        let currentAllowance = await elysContract.current.allowance(account, SWAP_CONTRACT_ADDRESS)
+        if (currentAllowance.lt(elysIn)) {
+            let remainingAllowance = ethers.BigNumber.from(elysIn).sub(currentAllowance)
+            elysContract.current.approve(SWAP_CONTRACT_ADDRESS, remainingAllowance)
+        }
+    }
+
     return (
-        <Container centerContent>
-            <Container centerContent alignItems="center" p="4" mt="10" minWidth="80" maxWidth="container.md" bg="white" border="1px" borderColor="blackAlpha.100" roundedTop="3xl" shadow="lg">
+        <Container centerContent mt="16" minWidth="72" pb="32">
+            <Container centerContent alignItems="center" p="4" maxWidth="container.md" bg="white" border="1px" borderColor="blackAlpha.100" roundedTop="3xl" shadow="lg">
                 <Text my="5" textAlign="left" w="full" fontSize="3xl" fontWeight="bold" color={!account ? "gray.400" : "black"}>Bridge</Text>
                 <Stack w="full">
                     <Stack direction="row" alignItems="center" border="1px" borderColor="gray.300" rounded="md" p="2">
@@ -138,7 +160,7 @@ const BridgeMain = () => {
                 <Text w="fit-content" my="2" color={!account ? "gray.400" : "black"}>{`≈ ${estimatedBtcOut} BTC`}</Text>
             </Container>
 
-            <Container centerContent alignItems="center" p="4" mt="0.5" minWidth="80" maxWidth="container.md" bg="white" border="1px" borderColor="blackAlpha.100" roundedBottom="3xl" shadow="lg">
+            <Container centerContent alignItems="center" p="4" mt="0.5" maxWidth="container.md" bg="white" border="1px" borderColor="blackAlpha.100" roundedBottom="3xl" shadow="lg">
                 <Box w="full" mb="6">
                     <Text mb="1" color={!account ? "blue.400" : "blue"}>Bridge tokens to: </Text>
                     <Input
@@ -154,7 +176,7 @@ const BridgeMain = () => {
                 {/* <Stack w="full"> */}
                 <Button size="lg" colorScheme="purple" bgGradient="linear(to-r, purple.400, pink.400)" _hover={{
                     bgGradient: "linear(to-r, purple.500, pink.500)",
-                }} w="full" rounded="xl" disabled={!account}>
+                }} w="full" rounded="xl" disabled={!account} onClick={approveElysToContract}>
                     Approve ELYS
                 </Button>
 
