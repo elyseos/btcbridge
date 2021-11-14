@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from 'react'
 import { Box, Container, Stack } from "@chakra-ui/layout"
 import { Text, Button, ButtonGroup, Input, Image } from '@chakra-ui/react'
-import { useWeb3React } from "@web3-react/core"
+import { UnsupportedChainIdError, useWeb3React } from "@web3-react/core"
 import { ethers } from 'ethers'
 import { Bitcoin, Fantom } from "@renproject/chains"
 import RenJS from "@renproject/ren";
@@ -97,7 +97,7 @@ const BridgeMain = () => {
             setEstimateBtcOut(ethers.utils.formatUnits(renBtcOut.mul(9985).div(10000), 8)) // adjust for RenVM fees
         }
         updateEstimatedBtc()
-    }, [elysIn])
+    }, [elysIn, account])
 
     const preventIllegalAmount = (e) => {
         if ((e.key === '-') || (e.key === '+') || (e.key === 'e'))
@@ -119,45 +119,46 @@ const BridgeMain = () => {
     return (
         <Container centerContent>
             <Container centerContent alignItems="center" p="4" mt="10" minWidth="80" maxWidth="container.md" bg="white" border="1px" borderColor="blackAlpha.100" roundedTop="3xl" shadow="lg">
-                <Text my="5" textAlign="left" w="full" fontSize="3xl" fontWeight="bold">Bridge</Text>
+                <Text my="5" textAlign="left" w="full" fontSize="3xl" fontWeight="bold" color={!account ? "gray.400" : "black"}>Bridge</Text>
                 <Stack w="full">
                     <Stack direction="row" alignItems="center" border="1px" borderColor="gray.300" rounded="md" p="2">
                         {/* <Stack centerContent alignItems="center" bg="white" border="1px" borderColor="gray.200" h="full" w="32" py="2" px="3" rounded="md" direction="row"> */}
                         <Image borderRadius="full" src="https://gitcoin.co/dynamic/avatar/elyseos" bg="white" boxSize="30px" />
                         {/* <Text fontWeight="bold">ELYS</Text> */}
                         {/* </Stack> */}
-                        <Input value={elysIn} isTruncated type="number" placeholder="0" textAlign="right" fontWeight="bold" fontSize="xl" onChange={e => setElysIn(e.target.value)} onKeyDown={e => preventIllegalAmount(e)} />
+                        <Input value={elysIn} isTruncated type="number" placeholder="0" textAlign="right" fontWeight="bold" fontSize="xl" onChange={e => setElysIn(e.target.value)} onKeyDown={e => preventIllegalAmount(e)} color={!account ? "gray.400" : "black"} />
                     </Stack>
                     <ButtonGroup isAttached variant="outline" w="full">
-                        <Button w="full" mr="-px" onClick={() => setElysInFromPercent(25)}>25%</Button>
-                        <Button w="full" mr="-px" onClick={() => setElysInFromPercent(50)}>50%</Button>
-                        <Button w="full" mr="-px" onClick={() => setElysInFromPercent(75)}>75%</Button>
-                        <Button w="full" mr="-px" onClick={() => setElysInFromPercent(100)}>100%</Button>
+                        <Button w="full" mr="-px" disabled={!account} onClick={() => setElysInFromPercent(25)}>25%</Button>
+                        <Button w="full" mr="-px" disabled={!account} onClick={() => setElysInFromPercent(50)}>50%</Button>
+                        <Button w="full" mr="-px" disabled={!account} onClick={() => setElysInFromPercent(75)}>75%</Button>
+                        <Button w="full" mr="-px" disabled={!account} onClick={() => setElysInFromPercent(100)}>100%</Button>
                     </ButtonGroup>
                 </Stack>
-                <Text w="fit-content" my="2">{`≈ ${estimatedBtcOut} BTC`}</Text>
+                <Text w="fit-content" my="2" color={!account ? "gray.400" : "black"}>{`≈ ${estimatedBtcOut} BTC`}</Text>
             </Container>
 
             <Container centerContent alignItems="center" p="4" mt="0.5" minWidth="80" maxWidth="container.md" bg="white" border="1px" borderColor="blackAlpha.100" roundedBottom="3xl" shadow="lg">
                 <Box w="full" mb="6">
-                    <Text mb="1" color="blue">Bridge tokens to: </Text>
+                    <Text mb="1" color={!account ? "blue.400" : "blue"}>Bridge tokens to: </Text>
                     <Input
                         isTruncated
                         // value={}
                         // onChange={handleChange} // Check validity of address
                         placeholder="Enter destination Bitcoin address"
                         onChange={e => btcAddress.current = e.target.value}
+                        color={!account ? "gray.400" : "black"}
                     />
                 </Box>
 
-                <Stack w="full">
-                    <Button size="lg" colorScheme="purple" bgGradient="linear(to-r, purple.400, pink.400)" _hover={{
-                        bgGradient: "linear(to-r, purple.500, pink.500)",
-                    }} w="full" rounded="xl">
-                        Approve ELYS
-                    </Button>
+                {/* <Stack w="full"> */}
+                <Button size="lg" colorScheme="purple" bgGradient="linear(to-r, purple.400, pink.400)" _hover={{
+                    bgGradient: "linear(to-r, purple.500, pink.500)",
+                }} w="full" rounded="xl" disabled={!account}>
+                    Approve ELYS
+                </Button>
 
-                    {/* <Stack direction="row">
+                {/* <Stack direction="row">
                         <Button size="lg" colorScheme="orange" bgGradient="linear(to-t, yellow.400, orange.400)" _hover={{
                             bgGradient: "linear(to-r, yellow.500, orange.500)",
                         }} w="full" rounded="xl">
@@ -170,7 +171,7 @@ const BridgeMain = () => {
                             Bridge
                         </Button>
                     </Stack> */}
-                </Stack>
+                {/* </Stack> */}
 
             </Container>
         </Container >
