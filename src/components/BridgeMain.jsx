@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from 'react'
 import { Box, Container, Stack } from "@chakra-ui/layout"
 import { Text, Button, ButtonGroup, Input, Image, Spinner, useToast } from '@chakra-ui/react'
+import { BsArrowUpRightSquare } from 'react-icons/bs'
 import { useWeb3React } from "@web3-react/core"
 import { ethers } from 'ethers'
 import { Bitcoin, Fantom } from "@renproject/chains"
@@ -26,6 +27,7 @@ const tokenAbi = [
 ]
 
 const swapAbi = [
+    'event WFTMtoRenBTCSwap(address indexed, uint, uint)',
     'function pendingWFTM(address addr) public view returns(uint)',
     'function swapELYSforWFTMUnchecked(uint amountIn) public returns(uint WFTMOut)',
     'function swapWFTMforRenBTCUnchecked() public returns(uint renBTCOut)',
@@ -62,6 +64,7 @@ const BridgeMain = () => {
 
     const txStatusToast = useToast()
     const [txReciept, setTxReceipt] = useState(null)
+    const [renIn, setRenIn] = useState(null)
 
     // ----------------------------------USE-EFFECTs----------------------------------
     // FOR INITIALIZING VALUES ON STATE CHANGE
@@ -89,6 +92,22 @@ const BridgeMain = () => {
             swapContract.current.pendingWFTM('0x6e2f61A92D4771BF8FDC1c0a7b27ffA13a4C054c').then(res => {
                 setPendingWFTM(res)
             })
+
+            let topic = ethers.utils.id("WFTMtoRenBTCSwap(address indexed, uint, uint)");
+
+            let filter = {
+                address: SWAP_CONTRACT_ADDRESS,
+                topics: [topic]
+            }
+
+            swapContract.current.on("WFTMtoRenBTCSwap", (addx, val1, val2, out) => {
+                console.log(addx, val1, val2, out)
+
+                if (addx == account) {
+                    setRenIn(val2)
+                    console.log("EVENT INFO:", addx, val1, val2, out)
+                }
+            });
         }
         // IF NO ACCOUNT LOGGED, RESET PARAMS
         else {
@@ -104,6 +123,7 @@ const BridgeMain = () => {
             elysBalance.current = 0
             setBtcAddress(null)
             currentAllowance.current = null
+            setRenIn(null)
 
             setTransactionStage(0)
         }
@@ -336,13 +356,18 @@ const BridgeMain = () => {
     }
 
     // (UNTESTED) BRIDGE RENBTC TO BTC-MAINNET
-    const bridgeBTC = async (amount) => {
-        const renJS = new RenJS("testnet", { useV2TransactionFormat: true })
+    const bridgeBTC = async () => {
+        let value = renIn.toNumber()
+        if (renIn === null) {
+            console.log('ERRROROOROROR')
+            return
+        }
+        const renJS = new RenJS("mainnet", { useV2TransactionFormat: true })
         const burnAndRelease = await renJS.burnAndRelease({
             // Send BTC from Fantom back to the Bitcoin blockchain.
             asset: "BTC",
             to: Bitcoin().Address(btcAddress),
-            from: Fantom(library).Address(account),
+            from: Fantom(library).Account({ address: account, value }),
         });
 
         let confirmations = 0;
@@ -353,7 +378,20 @@ const BridgeMain = () => {
                 confirmations = confs;
             })
             // Print Fantom transaction hash.
-            .on("transactionHash", (txHash) => console.log(`Fantom txHash: ${txHash}`));
+            .on("transactionHash", (txHash) => {
+                txStatusToast({
+                    title: "😄 Transaction submitted on Fantom",
+                    // description: "",
+                    status: "success",
+                    duration: 15000,
+                    isClosable: true,
+                    render: <a href={`https://ftmscan.com/tx/${txHash}`} target="_blank" rel="noreferrer">
+                        View on FTMScan
+                        <BsArrowUpRightSquare />
+                    </a>
+                })
+                console.log(`FTM txHash: ${txHash}`)
+            });
 
         await burnAndRelease
             .release()
@@ -364,9 +402,22 @@ const BridgeMain = () => {
                     : console.log(status)
             )
             // Print RenVM transaction hash
-            .on("txHash", (txHash) => console.log(`RenVM txHash: ${txHash}`));
+            .on("txHash", (txHash) => {
+                txStatusToast({
+                    title: "😄 Transaction submitted on RenVM",
+                    // description: "",
+                    status: "success",
+                    duration: 15000,
+                    isClosable: true,
+                    render: <a href={`https://live.blockcypher.com/btc/tx/${txHash}`} target="_blank" rel="noreferrer">
+                        View on BlockCypher
+                        <BsArrowUpRightSquare />
+                    </a>
+                })
+                console.log(`RenVM txHash: ${txHash}`)
+            });
 
-        console.log(`Withdrew ${amount} BTC to ${btcAddress}.`);
+        console.log(`Withdrew ${value} BTC to ${btcAddress}.`);
     };
 
     //----------------------------------ACTION BUTTON MANAGEMENT----------------------------------
@@ -380,6 +431,8 @@ const BridgeMain = () => {
             return <Text>Swap ELYS-WFTM</Text>
         else if (transactionStage === 3)
             return <Text>Swap WFTM-RBTC</Text>
+        else if ((transactionStage === 4) && (renIn === null))
+            return <Stack direction="row"><Spinner color="white" /> <Text>Fetching renBTC amount</Text></Stack>
         else if (transactionStage === 4)
             return <Text>Bridge BTC</Text>
         else if (transactionStage === 5)
@@ -399,7 +452,7 @@ const BridgeMain = () => {
             return false
         else if (transactionStage === 3)
             return false
-        else if ((transactionStage === 4) && addressValidity)
+        else if ((transactionStage === 4) && addressValidity && (renIn != null))
             return false
         else if (transactionStage === 5)
             return true
@@ -417,7 +470,7 @@ const BridgeMain = () => {
         else if (transactionStage === 3)
             return swapWFTMforRenBTCUnchecked
         else if (transactionStage === 4)
-            return undefined
+            return bridgeBTC
         else return undefined
     }
 
