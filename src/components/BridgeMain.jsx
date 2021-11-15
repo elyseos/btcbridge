@@ -5,8 +5,7 @@ import { useWeb3React } from "@web3-react/core"
 import { ethers } from 'ethers'
 import { Bitcoin, Fantom } from "@renproject/chains"
 import RenJS from "@renproject/ren";
-import { validate } from 'bitcoin-address-validation';
-// import swapAbi from './abi/ElysBTCSwap.json'
+import WAValidator from 'multicoin-address-validator'
 
 // CONTRACT ADDRESSES
 const SWAP_CONTRACT_ADDRESS = '0x924eE9804f297A3225ed39FdF8162beB0D9a9F21'
@@ -27,7 +26,7 @@ const tokenAbi = [
 ]
 
 const swapAbi = [
-    'mapping(address => uint) public pendingWFTM(address)',
+    'function pendingWFTM(address addr) public view returns(uint)',
     'function swapELYSforWFTMUnchecked(uint amountIn) public returns(uint WFTMOut)',
     'function swapWFTMforRenBTCUnchecked() public returns(uint renBTCOut)',
     'function transferPendingWFTM() public'
@@ -44,9 +43,13 @@ const BridgeMain = () => {
 
     const [elysIn, setElysIn] = useState('')
     const elysBalance = useRef(0)
-    const btcAddress = useRef(null)
+
+    const [btcAddress, setBtcAddress] = useState('')
+    const [addressValidity, setAddressValidity] = useState(false)
 
     const currentAllowance = useRef(null)
+    const [pendingWFTM, setPendingWFTM] = useState(null)
+
     // STAGES:
     // 0: disconnected
     // 1: approveELYS
@@ -82,6 +85,10 @@ const BridgeMain = () => {
                 console.log("ELYS approved to swap contract:", String(currentAllowance.current))
                 setApprovalState()
             })
+
+            swapContract.current.pendingWFTM('0x6e2f61A92D4771BF8FDC1c0a7b27ffA13a4C054c').then(res => {
+                setPendingWFTM(res)
+            })
         }
         // IF NO ACCOUNT LOGGED, RESET PARAMS
         else {
@@ -93,8 +100,9 @@ const BridgeMain = () => {
 
             // SET OTHER STATES TO DEFAULT
             setElysIn('')
+            setPendingWFTM(null)
             elysBalance.current = 0
-            btcAddress.current = null
+            setBtcAddress(null)
             currentAllowance.current = null
 
             setTransactionStage(0)
@@ -122,18 +130,24 @@ const BridgeMain = () => {
         setApprovalState()
     }, [elysIn])
 
-    // (ONLY DEBUGGING) LOGS TRANSACTIONSTAGE
+    // (ONLY DEBUGGING) LOGS TRANSACTION-STAGE
     useEffect(() => {
         console.log("TransactionStage:", transactionStage)
     }, [transactionStage])
 
-    // 
+    // CHECK IF BTC-ADDRESS IS VALID
+    // useEffect(() => {
+    //     setAddressValidity(validateBitcoinAddress(btcAddress))
+    //     console.log(addressValidity)
+    // }, [btcAddress])
+
+    // TRASACTION SUCCESSFUL TOAST
     useEffect(() => {
         console.log(txReciept)
         if ("TxReceipt:", txReciept) {
             txStatusToast({
                 title: "😄 Transaction Successful",
-                description: "Transaction has been successfull. Continue on!",
+                description: "Transaction has been successful. Continue on!",
                 status: "success",
                 duration: 9000,
                 isClosable: true,
@@ -144,10 +158,15 @@ const BridgeMain = () => {
     // SWITCHES BETWEEN 1<->2 STATES, ACCORDING TO CONDITIONS
     const setApprovalState = () => {
         if (account) {
-            if ((currentAllowance.current != null) && (currentAllowance.current.gt(ethers.utils.parseUnits(String(Number(elysBalance.current)), 5))))
-                setTransactionStage(2)
-            else setTransactionStage(1)
-            swapContract.pendingWFTM(account).then((res) => console.log(res))
+            swapContract.current.pendingWFTM('0x6e2f61A92D4771BF8FDC1c0a7b27ffA13a4C054c').then((res) => {
+                if (ethers.BigNumber.from(res).gt(0))
+                    setTransactionStage(3)
+                else if (ethers.BigNumber.from(res).eq(0)) {
+                    if ((currentAllowance.current != null) && (currentAllowance.current.gt(ethers.utils.parseUnits(String(Number(elysBalance.current)), 5))))
+                        setTransactionStage(2)
+                    else setTransactionStage(1)
+                }
+            })
         }
     }
 
@@ -169,9 +188,11 @@ const BridgeMain = () => {
 
     // CHECKS WHETHER GIVEN BTC-MAINNET ADDRESS IS VALID
     const validateBitcoinAddress = (address) => {
-        if (validate(btcAddress.current, 'mainnet'))
+        if (!address)
+            return false
+        if (WAValidator.validate(address, 'BTC'))
             return true
-        else return false
+        return false
     }
 
     // ----------------------------------TRANSACTION FUNCTIONS----------------------------------
@@ -199,6 +220,7 @@ const BridgeMain = () => {
 
     // SWAPS ELYS TO WFTM (WFTM STAYS IN CONTRACT)
     const swapELYSforWFTMUnchecked = () => {
+        console.log(elysIn)
         let elysToSwap = ethers.utils.parseUnits(elysIn, 5)
         console.log(`ELYS to be swapped:" ${String(elysToSwap)}/${ethers.utils.parseUnits(elysBalance.current, 5)}`)
         if (ethers.BigNumber.from(ethers.utils.parseUnits(elysBalance.current, 5)).lt(ethers.BigNumber.from(elysToSwap))) {
@@ -215,11 +237,14 @@ const BridgeMain = () => {
         setTransactionStage(5)
 
         let txStatus = swapContract.current.swapELYSforWFTMUnchecked(elysToSwap)
-        txStatus.then((tx) => {
+        txStatus.then(async (tx) => {
             console.log(tx)
             raiseTxSentToast()
             setTransactionStage(6)
-            continuousCheckTransactionMined(tx.hash, 2)
+            await continuousCheckTransactionMined(tx.hash, 2)
+            await swapContract.current.pendingWFTM('0x6e2f61A92D4771BF8FDC1c0a7b27ffA13a4C054c').then(res => {
+                setPendingWFTM(res)
+            })
         }).catch((err) => {
             console.log(err)
             txStatusToast({
@@ -237,11 +262,12 @@ const BridgeMain = () => {
         console.log(swapContract.current)
         setTransactionStage(5)
         let tx = swapContract.current.swapWFTMforRenBTCUnchecked()
-        tx.then((tx) => {
+        tx.then(async (tx) => {
             console.log(tx)
             raiseTxSentToast()
             setTransactionStage(6)
-            continuousCheckTransactionMined(tx.hash, 3)
+            await continuousCheckTransactionMined(tx.hash, 3)
+            setPendingWFTM(0)
         }).catch((err) => {
             console.log(err)
             txStatusToast({
@@ -251,7 +277,29 @@ const BridgeMain = () => {
                 duration: 9000,
                 isClosable: true,
             })
-            setApprovalState()
+            setTransactionStage(2)
+        })
+    }
+
+    const transferPendingWFTM = () => {
+        setTransactionStage(5)
+        let txStatus = swapContract.current.transferPendingWFTM()
+        txStatus.then((tx) => {
+            console.log(tx)
+            raiseTxSentToast()
+            setTransactionStage(6)
+            continuousCheckTransactionMined(tx.hash, 2)
+            setPendingWFTM(0)
+        }).catch((err) => {
+            console.log(err)
+            txStatusToast({
+                title: "☹️ Rejected",
+                description: err.message,
+                status: "error",
+                duration: 9000,
+                isClosable: true,
+            })
+            setTransactionStage(3)
         })
     }
 
@@ -347,11 +395,11 @@ const BridgeMain = () => {
             return true
         if (transactionStage === 1)
             return false
-        else if (transactionStage === 2)
+        else if ((transactionStage === 2) && (Number(elysIn)))
             return false
         else if (transactionStage === 3)
             return false
-        else if ((transactionStage === 4) && validateBitcoinAddress)
+        else if ((transactionStage === 4) && addressValidity)
             return false
         else if (transactionStage === 5)
             return true
@@ -393,6 +441,15 @@ const BridgeMain = () => {
                     </ButtonGroup>
                 </Stack>
                 <Text w="fit-content" my="2" color={!account ? "gray.400" : "black"}>{`≈ ${estimatedBtcOut} BTC`}</Text>
+                {Number(pendingWFTM) ?
+                    <>
+                        <Text w="fit-content" mt="2" color={!account ? "gray.400" : "black"}>
+                            {Number(ethers.utils.formatUnits(pendingWFTM, 18)).toFixed(2)} <b>WFTM</b> pending.
+                        </Text>
+                        <Button color="blue" mb="2" variant="link" onClick={transferPendingWFTM}>
+                            Withdraw
+                        </Button>
+                    </> : <></>}
             </Container>
 
             <Container centerContent alignItems="center" p="4" mt="0.5" maxWidth="container.md" bg="white" border="1px" borderColor="blackAlpha.100" roundedBottom="3xl" shadow="lg">
@@ -400,10 +457,14 @@ const BridgeMain = () => {
                     <Text mb="1" color={!account ? "blue.400" : "blue"}>Bridge tokens to: </Text>
                     <Input
                         isTruncated
+                        isInvalid={!addressValidity}
                         // value={}
                         // onChange={handleChange} // Check validity of address
                         placeholder="Enter destination Bitcoin address"
-                        onChange={e => btcAddress.current = e.target.value}
+                        onChange={e => {
+                            setBtcAddress(e.target.value)
+                            setAddressValidity(validateBitcoinAddress(e.target.value))
+                        }}
                         color={!account ? "gray.400" : "black"}
                     />
                 </Box>
