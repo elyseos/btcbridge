@@ -1,18 +1,35 @@
 import { useRef, useState, useEffect } from 'react'
 import { Box, Container, Stack } from "@chakra-ui/layout"
-import { Text, Button, ButtonGroup, Input, Image } from '@chakra-ui/react'
-import { UnsupportedChainIdError, useWeb3React } from "@web3-react/core"
+import { Text, Button, ButtonGroup, Input, Image, Spinner, useToast } from '@chakra-ui/react'
+import { useWeb3React } from "@web3-react/core"
 import { ethers } from 'ethers'
 import { Bitcoin, Fantom } from "@renproject/chains"
 import RenJS from "@renproject/ren";
 import { validate } from 'bitcoin-address-validation';
 
-const SWAP_CONTRACT_ADDRESS = ''
+// CONTRACT ADDRESSES
+const SWAP_CONTRACT_ADDRESS = '0x924eE9804f297A3225ed39FdF8162beB0D9a9F21'
 const ELYS_CONTRACT_ADDRESS = '0xd89cc0d2A28a769eADeF50fFf74EBC07405DB9Fc'
 const FTM_CONTRACT_ADDRESS = '0x21be370D5312f44cB42ce377BC9b8a0cEF1A4C83'
 const RENBTC_CONTRACT__ADDRESS = '0xdbf31df14b66535af65aac99c32e9ea844e14501'
 const ZOO_ROUTER_ADDRESS = '0x40b12a3E261416fF0035586ff96e23c2894560f2'
 const HYPER_ROUTER_ADDRESS = '0x53c153a0df7E050BbEFbb70eE9632061f12795fB'
+
+// CONTRACT ABIs
+const routerAbi = [
+    'function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts)'
+]
+const tokenAbi = [
+    'function balanceOf(address _owner) public view returns(uint256 balance)',
+    'function approve(address _spender, uint256 _value) public returns (bool success)',
+    'function allowance(address _owner, address _spender) public view returns (uint256 remaining)'
+]
+
+const swapAbi = [
+    'function swapELYSforWFTMUnchecked(uint amountIn) public returns(uint WFTMOut)',
+    'function swapWFTMforRenBTCUnchecked() public returns(uint renBTCOut)',
+    'function transferPendingWFTM() public'
+]
 
 const BridgeMain = () => {
     const { account, library } = useWeb3React()
@@ -21,18 +38,145 @@ const BridgeMain = () => {
     const zooRouter = useRef(null)
     const hyperRouter = useRef(null)
     const elysContract = useRef(null)
-    const routerAbi = useRef(null)
-    const tokenAbi = useRef(null)
+    const swapContract = useRef(null)
 
     const [elysIn, setElysIn] = useState('')
     const elysBalance = useRef(0)
     const btcAddress = useRef(null)
 
-    const getElysBalance = async () => {
-        let balance = await elysContract.current.balanceOf(account)
-        elysBalance.current = ethers.utils.formatUnits(balance, 5)
+    const currentAllowance = useRef(null)
+    const [transactionStage, setTransactionStage] = useState('disconnected')
+
+    const txStatusToast = useToast()
+
+    // ----------------------------------USE-EFFECTs----------------------------------
+    // FOR INITIALIZING VALUES ON STATE CHANGE
+    useEffect(() => {
+        if (account) {
+            // INITIALIZE CONTRACTs
+            swapContract.current = new ethers.Contract(SWAP_CONTRACT_ADDRESS, swapAbi, library.getSigner())
+            elysContract.current = new ethers.Contract(ELYS_CONTRACT_ADDRESS, tokenAbi, library.getSigner())
+            zooRouter.current = new ethers.Contract(ZOO_ROUTER_ADDRESS, routerAbi, library.getSigner())
+            hyperRouter.current = new ethers.Contract(HYPER_ROUTER_ADDRESS, routerAbi, library.getSigner())
+
+            // UPDATE ELYS BALANCE
+            elysContract.current.balanceOf(account).then((balance) => {
+                elysBalance.current = ethers.utils.formatUnits(balance, 5)
+                console.log("ELYS Balance:", elysBalance.current)
+            })
+
+            // FETCH APPROVED AMOUNT AND UPDATE TRANSACTION STATE IF REQUIRED
+            elysContract.current.allowance(account, SWAP_CONTRACT_ADDRESS).then((out) => {
+                currentAllowance.current = out
+                console.log("ELYS approved to swap contract:", String(currentAllowance.current))
+                setApprovalState()
+            })
+        }
+        // IF NO ACCOUNT LOGGED, RESET PARAMS
+        else {
+            // NULL ALL CONTRACTs
+            swapContract.current = null
+            elysContract.current = null
+            zooRouter.current = null
+            hyperRouter.current = null
+
+            // SET OTHER STATES TO DEFAULT
+            setElysIn('')
+            elysBalance.current = 0
+            btcAddress.current = null
+            currentAllowance.current = null
+
+            setTransactionStage('disconnected')
+        }
+    }, [account, library])
+
+    // FOR UPDATING ESTIMATED BTC OUT AND CHECKING IF ENOUGH TOKENS ARE APPROVED
+    useEffect(() => {
+        const updateEstimatedBtc = async () => {
+            let elysInputValue = Number(elysIn)
+            if (elysInputValue === 0) { // Protect from Uniswap Insufficient Amount error
+                setEstimateBtcOut('0')
+                return
+            } else elysInputValue = String(elysIn)
+
+            if (account == null) {
+                return
+            }
+
+            let ftmOut = (await zooRouter.current.getAmountsOut(ethers.utils.parseUnits(elysInputValue, 5), [ELYS_CONTRACT_ADDRESS, FTM_CONTRACT_ADDRESS]))[1]
+            let renBtcOut = (await hyperRouter.current.getAmountsOut(ftmOut, [FTM_CONTRACT_ADDRESS, RENBTC_CONTRACT__ADDRESS]))[1]
+            setEstimateBtcOut(ethers.utils.formatUnits(renBtcOut.mul(9985).div(10000), 8)) // adjust for RenVM fees
+        }
+        updateEstimatedBtc()
+        setApprovalState()
+    }, [elysIn])
+
+    // (ONLY DEBUGGING) LOGS TRANSACTIONSTAGE
+    useEffect(() => {
+        console.log("TransactionStage:", transactionStage)
+    }, [transactionStage])
+
+    // SWITCHES BETWEEN 'SwapELYSforWFTM'<->'approveELYS' STATES, ACCORDING TO CONDITIONS
+    const setApprovalState = () => {
+        if (account) {
+            if ((currentAllowance.current != null) && (currentAllowance.current.gt(ethers.utils.parseUnits(String(Number(elysBalance.current)), 5))))
+                setTransactionStage('SwapELYSforWFTM')
+            else setTransactionStage('approveELYS')
+        }
     }
 
+    // ----------------------------------INPUT CONTROL AND CHECKING----------------------------------
+    // PREVENTS ILLEGAL INPUT IN ELYS AMOUNT
+    const preventIllegalAmount = (e) => {
+        if ((e.key === '-') || (e.key === '+') || (e.key === 'e'))
+            e.preventDefault()
+        if ((e.target.value.indexOf('.') !== -1) && (e.target.value.length - e.target.value.indexOf('.') > 5) && (!isNaN(e.key)))
+            e.preventDefault()
+    }
+
+    // SETS ELYS AMOUNT AS PERCENTAGE OF WALLET BALANCE
+    const setElysInFromPercent = (percent) => {
+        let balance = elysBalance.current * (percent / 100)
+        balance = balance.toFixed(5)
+        setElysIn(String(balance))
+    }
+
+    // CHECKS WHETHER GIVEN BTC-MAINNET ADDRESS IS VALID
+    const validateBitcoinAddress = (address) => {
+        if (validate(btcAddress.current, 'mainnet'))
+            return true
+        else return false
+    }
+
+    // ----------------------------------TRANSACTION FUNCTIONS----------------------------------
+    // APPROVES ELYS TO THE SWAP CONTRACT
+    const approveElysToContract = async () => {
+        setTransactionStage('walletConfirm')
+        let tx = elysContract.current.approve(SWAP_CONTRACT_ADDRESS, ethers.BigNumber.from('2').pow('256').sub('1'))
+        tx.then((tx) => {
+            console.log(tx)
+            txStatusToast({
+                title: "😄 Successful",
+                description: "Your ELYS has been swapped. Continue on!",
+                status: "success",
+                duration: 9000,
+                isClosable: true,
+            })
+            setTransactionStage('SwapWFTMforRBTC')
+        }).catch((err) => {
+            console.log(err)
+            txStatusToast({
+                title: "☹️ Rejected",
+                description: err.message,
+                status: "error",
+                duration: 9000,
+                isClosable: true,
+            })
+            setApprovalState()
+        })
+    }
+
+    // (UNTESTED) BRIDGE RENBTC TO BTC-MAINNET
     const bridgeBTC = async (amount) => {
         const renJS = new RenJS("testnet", { useV2TransactionFormat: true })
         const burnAndRelease = await renJS.burnAndRelease({
@@ -66,76 +210,56 @@ const BridgeMain = () => {
         console.log(`Withdrew ${amount} BTC to ${btcAddress}.`);
     };
 
-    useEffect(() => {
-        routerAbi.current = [
-            'function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts)'
-        ]
-        tokenAbi.current = [
-            'function balanceOf(address _owner) public view returns(uint256 balance)',
-            'function approve(address _spender, uint256 _value) public returns (bool success)',
-            'function allowance(address _owner, address _spender) public view returns (uint256 remaining)'
-        ]
-    }, [])
-
-    useEffect(() => {
-        if (account) {
-
-            elysContract.current = new ethers.Contract(ELYS_CONTRACT_ADDRESS, tokenAbi.current, library.getSigner())
-            zooRouter.current = new ethers.Contract(ZOO_ROUTER_ADDRESS, routerAbi.current, library.getSigner())
-            hyperRouter.current = new ethers.Contract(HYPER_ROUTER_ADDRESS, routerAbi.current, library.getSigner())
-            getElysBalance()
-        }
-        else {
-            zooRouter.current = null
-            hyperRouter.current = null
-        }
-    }, [account, library])
-
-    useEffect(() => {
-        const updateEstimatedBtc = async () => {
-            let elysInputValue = Number(elysIn)
-            if (elysInputValue === 0) { // Protect from Uniswap Insufficient Amount error
-                setEstimateBtcOut('0')
-                return
-            } else elysInputValue = String(elysIn)
-
-            if (account == null) {
-                console.log("Wallet not connected. Trigger a modal!")
-                return
-            }
-
-            let ftmOut = (await zooRouter.current.getAmountsOut(ethers.utils.parseUnits(elysInputValue, 5), [ELYS_CONTRACT_ADDRESS, FTM_CONTRACT_ADDRESS]))[1]
-            let renBtcOut = (await hyperRouter.current.getAmountsOut(ftmOut, [FTM_CONTRACT_ADDRESS, RENBTC_CONTRACT__ADDRESS]))[1]
-            setEstimateBtcOut(ethers.utils.formatUnits(renBtcOut.mul(9985).div(10000), 8)) // adjust for RenVM fees
-        }
-        updateEstimatedBtc()
-    }, [elysIn, account])
-
-    const preventIllegalAmount = (e) => {
-        if ((e.key === '-') || (e.key === '+') || (e.key === 'e'))
-            e.preventDefault()
-        if ((e.target.value.indexOf('.') !== -1) && (e.target.value.length - e.target.value.indexOf('.') > 5) && (!isNaN(e.key)))
-            e.preventDefault()
+    //----------------------------------ACTION BUTTON MANAGEMENT----------------------------------
+    // CHANGES ACTION BUTTON CONTENT BASED ON TRANSACTION-STATE
+    const getActionButtonState = () => {
+        if (transactionStage === 'disconnected')
+            return <Text>Connect Wallet</Text>
+        else if (transactionStage === 'approveELYS')
+            return <Text>Approve ELYS</Text>
+        else if (transactionStage === 'SwapELYSforWFTM')
+            return <Text>Swap ELYS-WFTM</Text>
+        else if (transactionStage === 'SwapWFTMforRBTC')
+            return <Text>Swap WFTM-RBTC</Text>
+        else if (transactionStage === 'bridge')
+            return <Text>Bridge BTC</Text>
+        else if (transactionStage === 'walletConfirm')
+            return <Stack direction="row"><Spinner color="white" /> <Text>Confirm in your wallet</Text></Stack>
+        else <Text>Invalid State</Text>
     }
 
-    const setElysInFromPercent = (percent) => {
-        setElysIn(String(Number(elysBalance.current) * (percent / 100)))
-    }
-
-    const validateBitcoinAddress = (address) => {
-        if (validate(address, 'mainnet'))
+    // ENABLES/DISABLES ACTION BUTTON BASED ON TRANSACTION-STATE
+    const getActionButtonDisabled = () => {
+        if (!account)
             return true
-        else return false
+        if (transactionStage === 'approveELYS')
+            return false
+        else if (transactionStage === 'SwapELYSforWFTM')
+            return false
+        else if (transactionStage === 'SwapWFTMforRBTC')
+            return false
+        else if ((transactionStage === 'bridge') && validateBitcoinAddress)
+            return false
+        else if (transactionStage === 'walletConfirm')
+            return true
+        else return true
     }
 
-    const approveElysToContract = async () => {
-        setElysIn(String(Number(elysIn)))
-
-        let currentAllowance = await elysContract.current.allowance(account, SWAP_CONTRACT_ADDRESS)
-        if (currentAllowance.lt(elysIn)) {
-            let remainingAllowance = ethers.BigNumber.from(elysIn).sub(currentAllowance)
-            elysContract.current.approve(SWAP_CONTRACT_ADDRESS, remainingAllowance)
-        }
+    // SETS ACTION BUTTON ONCLICK BASED ON TRANSACTION-STATE
+    const getActionButtonOnClick = () => {
+        if (!account)
+            return undefined
+        if (transactionStage === 'approveELYS')
+            return approveElysToContract
+        else if (transactionStage === 'SwapELYSforWFTM')
+            return false
+        else if (transactionStage === 'SwapWFTMforRBTC')
+            return false
+        else if (transactionStage === 'bridge')
+            return false
+        else if (transactionStage === 'walletConfirm')
+            return true
+        else return true
     }
 
     return (
@@ -176,24 +300,9 @@ const BridgeMain = () => {
                 {/* <Stack w="full"> */}
                 <Button size="lg" colorScheme="purple" bgGradient="linear(to-r, purple.400, pink.400)" _hover={{
                     bgGradient: "linear(to-r, purple.500, pink.500)",
-                }} w="full" rounded="xl" disabled={!account} onClick={approveElysToContract}>
-                    Approve ELYS
+                }} w="full" rounded="xl" disabled={getActionButtonDisabled()} onClick={getActionButtonOnClick}>
+                    {getActionButtonState()}
                 </Button>
-
-                {/* <Stack direction="row">
-                        <Button size="lg" colorScheme="orange" bgGradient="linear(to-t, yellow.400, orange.400)" _hover={{
-                            bgGradient: "linear(to-r, yellow.500, orange.500)",
-                        }} w="full" rounded="xl">
-                            Convert To renBTC
-                        </Button>
-
-                        <Button size="lg" colorScheme="green" bgGradient="linear(to-t, green.400, green.500)" _hover={{
-                            bgGradient: "linear(to-r, green.500, green.600)",
-                        }} w="full" rounded="xl">
-                            Bridge
-                        </Button>
-                    </Stack> */}
-                {/* </Stack> */}
 
             </Container>
         </Container >
