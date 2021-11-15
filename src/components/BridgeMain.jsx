@@ -6,6 +6,7 @@ import { ethers } from 'ethers'
 import { Bitcoin, Fantom } from "@renproject/chains"
 import RenJS from "@renproject/ren";
 import { validate } from 'bitcoin-address-validation';
+// import swapAbi from './abi/ElysBTCSwap.json'
 
 // CONTRACT ADDRESSES
 const SWAP_CONTRACT_ADDRESS = '0x924eE9804f297A3225ed39FdF8162beB0D9a9F21'
@@ -26,6 +27,7 @@ const tokenAbi = [
 ]
 
 const swapAbi = [
+    'mapping(address => uint) public pendingWFTM(address)',
     'function swapELYSforWFTMUnchecked(uint amountIn) public returns(uint WFTMOut)',
     'function swapWFTMforRenBTCUnchecked() public returns(uint renBTCOut)',
     'function transferPendingWFTM() public'
@@ -45,9 +47,18 @@ const BridgeMain = () => {
     const btcAddress = useRef(null)
 
     const currentAllowance = useRef(null)
-    const [transactionStage, setTransactionStage] = useState('disconnected')
+    // STAGES:
+    // 0: disconnected
+    // 1: approveELYS
+    // 2: SwapELYSforWFTM
+    // 3: SwapWFTMforRBTC
+    // 4: bridge
+    // 5: walletConfirm
+    // 6: waitingTxConfirm
+    const [transactionStage, setTransactionStage] = useState(0)
 
     const txStatusToast = useToast()
+    const [txReciept, setTxReceipt] = useState(null)
 
     // ----------------------------------USE-EFFECTs----------------------------------
     // FOR INITIALIZING VALUES ON STATE CHANGE
@@ -86,7 +97,7 @@ const BridgeMain = () => {
             btcAddress.current = null
             currentAllowance.current = null
 
-            setTransactionStage('disconnected')
+            setTransactionStage(0)
         }
     }, [account, library])
 
@@ -116,12 +127,27 @@ const BridgeMain = () => {
         console.log("TransactionStage:", transactionStage)
     }, [transactionStage])
 
-    // SWITCHES BETWEEN 'SwapELYSforWFTM'<->'approveELYS' STATES, ACCORDING TO CONDITIONS
+    // 
+    useEffect(() => {
+        console.log(txReciept)
+        if ("TxReceipt:", txReciept) {
+            txStatusToast({
+                title: "😄 Transaction Successful",
+                description: "Transaction has been successfull. Continue on!",
+                status: "success",
+                duration: 9000,
+                isClosable: true,
+            })
+        }
+    }, [txReciept])
+
+    // SWITCHES BETWEEN 1<->2 STATES, ACCORDING TO CONDITIONS
     const setApprovalState = () => {
         if (account) {
             if ((currentAllowance.current != null) && (currentAllowance.current.gt(ethers.utils.parseUnits(String(Number(elysBalance.current)), 5))))
-                setTransactionStage('SwapELYSforWFTM')
-            else setTransactionStage('approveELYS')
+                setTransactionStage(2)
+            else setTransactionStage(1)
+            swapContract.pendingWFTM(account).then((res) => console.log(res))
         }
     }
 
@@ -151,18 +177,13 @@ const BridgeMain = () => {
     // ----------------------------------TRANSACTION FUNCTIONS----------------------------------
     // APPROVES ELYS TO THE SWAP CONTRACT
     const approveElysToContract = async () => {
-        setTransactionStage('walletConfirm')
+        setTransactionStage(5)
         let tx = elysContract.current.approve(SWAP_CONTRACT_ADDRESS, ethers.BigNumber.from('2').pow('256').sub('1'))
         tx.then((tx) => {
             console.log(tx)
-            txStatusToast({
-                title: "😄 Successful",
-                description: "Your ELYS has been swapped. Continue on!",
-                status: "success",
-                duration: 9000,
-                isClosable: true,
-            })
-            setTransactionStage('SwapWFTMforRBTC')
+            raiseTxSentToast()
+            setTransactionStage(6)
+            continuousCheckTransactionMined(tx.hash, 1)
         }).catch((err) => {
             console.log(err)
             txStatusToast({
@@ -173,6 +194,96 @@ const BridgeMain = () => {
                 isClosable: true,
             })
             setApprovalState()
+        })
+    }
+
+    // SWAPS ELYS TO WFTM (WFTM STAYS IN CONTRACT)
+    const swapELYSforWFTMUnchecked = () => {
+        let elysToSwap = ethers.utils.parseUnits(elysIn, 5)
+        console.log(`ELYS to be swapped:" ${String(elysToSwap)}/${ethers.utils.parseUnits(elysBalance.current, 5)}`)
+        if (ethers.BigNumber.from(ethers.utils.parseUnits(elysBalance.current, 5)).lt(ethers.BigNumber.from(elysToSwap))) {
+            txStatusToast({
+                title: "👛 Wallet Balance Exceeded",
+                description: `ELYS amount exceeds balance of ${elysBalance.current}`,
+                status: "error",
+                duration: 9000,
+                isClosable: true,
+            })
+            return
+        }
+
+        setTransactionStage(5)
+
+        let txStatus = swapContract.current.swapELYSforWFTMUnchecked(elysToSwap)
+        txStatus.then((tx) => {
+            console.log(tx)
+            raiseTxSentToast()
+            setTransactionStage(6)
+            continuousCheckTransactionMined(tx.hash, 2)
+        }).catch((err) => {
+            console.log(err)
+            txStatusToast({
+                title: "☹️ Rejected",
+                description: err.message,
+                status: "error",
+                duration: 9000,
+                isClosable: true,
+            })
+            setApprovalState()
+        })
+    }
+
+    const swapWFTMforRenBTCUnchecked = async () => {
+        console.log(swapContract.current)
+        setTransactionStage(5)
+        let tx = swapContract.current.swapWFTMforRenBTCUnchecked()
+        tx.then((tx) => {
+            console.log(tx)
+            raiseTxSentToast()
+            setTransactionStage(6)
+            continuousCheckTransactionMined(tx.hash, 3)
+        }).catch((err) => {
+            console.log(err)
+            txStatusToast({
+                title: "☹️ Rejected",
+                description: err.message,
+                status: "error",
+                duration: 9000,
+                isClosable: true,
+            })
+            setApprovalState()
+        })
+    }
+
+    // CHECK IF TRANSACTION MINED
+    const isTransactionMined = async (transactionHash) => {
+        const txReceipt = await library.getTransactionReceipt(transactionHash);
+        if (txReceipt && txReceipt.blockNumber) {
+            return txReceipt;
+        }
+    }
+
+    // CHECK IF TRANSACTION MINED REPEATEDLY
+    const continuousCheckTransactionMined = async (transactionHash, txStage) => {
+        let txReceipt = await isTransactionMined(transactionHash)
+        if (txReceipt) {
+            setTxReceipt(txReceipt)
+            if (txStage === 4)
+                setApprovalState()
+            else setTransactionStage(txStage + 1)
+            return
+        }
+        else setTimeout(continuousCheckTransactionMined(transactionHash, txStage), 1000)
+    }
+
+    // RAISE TRANSACTION SENT TOAST
+    const raiseTxSentToast = () => {
+        txStatusToast({
+            title: "⏲️ Transaction Sent",
+            description: "Waiting for confirmation...",
+            status: "info",
+            duration: 9000,
+            isClosable: true,
         })
     }
 
@@ -213,18 +324,20 @@ const BridgeMain = () => {
     //----------------------------------ACTION BUTTON MANAGEMENT----------------------------------
     // CHANGES ACTION BUTTON CONTENT BASED ON TRANSACTION-STATE
     const getActionButtonState = () => {
-        if (transactionStage === 'disconnected')
+        if (transactionStage === 0)
             return <Text>Connect Wallet</Text>
-        else if (transactionStage === 'approveELYS')
+        else if (transactionStage === 1)
             return <Text>Approve ELYS</Text>
-        else if (transactionStage === 'SwapELYSforWFTM')
+        else if (transactionStage === 2)
             return <Text>Swap ELYS-WFTM</Text>
-        else if (transactionStage === 'SwapWFTMforRBTC')
+        else if (transactionStage === 3)
             return <Text>Swap WFTM-RBTC</Text>
-        else if (transactionStage === 'bridge')
+        else if (transactionStage === 4)
             return <Text>Bridge BTC</Text>
-        else if (transactionStage === 'walletConfirm')
+        else if (transactionStage === 5)
             return <Stack direction="row"><Spinner color="white" /> <Text>Confirm in your wallet</Text></Stack>
+        else if (transactionStage === 6)
+            return <Stack direction="row"><Spinner color="white" /> <Text>Waiting for confirmation</Text></Stack>
         else <Text>Invalid State</Text>
     }
 
@@ -232,15 +345,15 @@ const BridgeMain = () => {
     const getActionButtonDisabled = () => {
         if (!account)
             return true
-        if (transactionStage === 'approveELYS')
+        if (transactionStage === 1)
             return false
-        else if (transactionStage === 'SwapELYSforWFTM')
+        else if (transactionStage === 2)
             return false
-        else if (transactionStage === 'SwapWFTMforRBTC')
+        else if (transactionStage === 3)
             return false
-        else if ((transactionStage === 'bridge') && validateBitcoinAddress)
+        else if ((transactionStage === 4) && validateBitcoinAddress)
             return false
-        else if (transactionStage === 'walletConfirm')
+        else if (transactionStage === 5)
             return true
         else return true
     }
@@ -249,17 +362,15 @@ const BridgeMain = () => {
     const getActionButtonOnClick = () => {
         if (!account)
             return undefined
-        if (transactionStage === 'approveELYS')
+        if (transactionStage === 1)
             return approveElysToContract
-        else if (transactionStage === 'SwapELYSforWFTM')
-            return false
-        else if (transactionStage === 'SwapWFTMforRBTC')
-            return false
-        else if (transactionStage === 'bridge')
-            return false
-        else if (transactionStage === 'walletConfirm')
-            return true
-        else return true
+        else if (transactionStage === 2)
+            return swapELYSforWFTMUnchecked
+        else if (transactionStage === 3)
+            return swapWFTMforRenBTCUnchecked
+        else if (transactionStage === 4)
+            return undefined
+        else return undefined
     }
 
     return (
@@ -300,7 +411,7 @@ const BridgeMain = () => {
                 {/* <Stack w="full"> */}
                 <Button size="lg" colorScheme="purple" bgGradient="linear(to-r, purple.400, pink.400)" _hover={{
                     bgGradient: "linear(to-r, purple.500, pink.500)",
-                }} w="full" rounded="xl" disabled={getActionButtonDisabled()} onClick={getActionButtonOnClick}>
+                }} w="full" rounded="xl" disabled={getActionButtonDisabled()} onClick={getActionButtonOnClick()}>
                     {getActionButtonState()}
                 </Button>
 

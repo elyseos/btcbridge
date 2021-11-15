@@ -6,6 +6,7 @@ import { UnsupportedChainIdError, useWeb3React } from "@web3-react/core"
 import Jazzicon, { jsNumberForAddress } from 'react-jazzicon'
 import { injected } from "./wallet/connector"
 
+// TODO add pending WFTM balance 
 
 const WalletSpace = () => {
     const { active, account, activate, deactivate, error } = useWeb3React()
