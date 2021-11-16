@@ -93,17 +93,10 @@ const BridgeMain = () => {
                 setPendingWFTM(res)
             })
 
-            let topic = ethers.utils.id("WFTMtoRenBTCSwap(address indexed, uint, uint)");
-
-            let filter = {
-                address: SWAP_CONTRACT_ADDRESS,
-                topics: [topic]
-            }
-
             swapContract.current.on("WFTMtoRenBTCSwap", (addx, val1, val2, out) => {
                 console.log(addx, val1, val2, out)
 
-                if (addx == account) {
+                if (addx === account) {
                     setRenIn(val2)
                     console.log("EVENT INFO:", addx, val1, val2, out)
                 }
@@ -163,8 +156,8 @@ const BridgeMain = () => {
 
     // TRASACTION SUCCESSFUL TOAST
     useEffect(() => {
-        console.log(txReciept)
-        if ("TxReceipt:", txReciept) {
+        console.log("TxReceipt:", txReciept)
+        if (txReciept) {
             txStatusToast({
                 title: "😄 Transaction Successful",
                 description: "Transaction has been successful. Continue on!",
@@ -180,11 +173,11 @@ const BridgeMain = () => {
         if (account) {
             swapContract.current.pendingWFTM('0x6e2f61A92D4771BF8FDC1c0a7b27ffA13a4C054c').then((res) => {
                 if (ethers.BigNumber.from(res).gt(0))
-                    setTransactionStage(3)
+                    setTransactionStage(3)  // Straight to WFTM-renBTC swap
                 else if (ethers.BigNumber.from(res).eq(0)) {
                     if ((currentAllowance.current != null) && (currentAllowance.current.gt(ethers.utils.parseUnits(String(Number(elysBalance.current)), 5))))
-                        setTransactionStage(2)
-                    else setTransactionStage(1)
+                        setTransactionStage(2)  // ELYS-WFTM swap 
+                    else setTransactionStage(1) // Ask for ELYS approval
                 }
             })
         }
@@ -380,15 +373,15 @@ const BridgeMain = () => {
             // Print Fantom transaction hash.
             .on("transactionHash", (txHash) => {
                 txStatusToast({
-                    title: "😄 Transaction submitted on Fantom",
-                    // description: "",
-                    status: "success",
+                    title: "Transaction submitted on Fantom",
+                    description: `https://ftmscan.com/tx/${txHash}`,
+                    status: "info",
                     duration: 15000,
                     isClosable: true,
-                    render: <a href={`https://ftmscan.com/tx/${txHash}`} target="_blank" rel="noreferrer">
+                    render: <><a href={`https://ftmscan.com/tx/${txHash}`} target="_blank" rel="noreferrer">
                         View on FTMScan
                         <BsArrowUpRightSquare />
-                    </a>
+                    </a></>
                 })
                 console.log(`FTM txHash: ${txHash}`)
             });
@@ -404,19 +397,30 @@ const BridgeMain = () => {
             // Print RenVM transaction hash
             .on("txHash", (txHash) => {
                 txStatusToast({
-                    title: "😄 Transaction submitted on RenVM",
-                    // description: "",
-                    status: "success",
+                    title: "Transaction submitted on RenVM",
+                    description: `https://explorer.renproject.io/#/tx/${txHash}`,
+                    status: "info",
                     duration: 15000,
                     isClosable: true,
-                    render: <a href={`https://live.blockcypher.com/btc/tx/${txHash}`} target="_blank" rel="noreferrer">
+                    render: <><a href={`https://explorer.renproject.io/#/tx/${txHash}`} target="_blank" rel="noreferrer">
                         View on BlockCypher
                         <BsArrowUpRightSquare />
-                    </a>
+                    </a></>
                 })
                 console.log(`RenVM txHash: ${txHash}`)
             });
 
+        txStatusToast({
+            title: "🎉 Your BTC has been deposited",
+            description: `https://live.blockcypher.com/btc/address/${btcAddress}`,
+            status: "success",
+            duration: 15000,
+            isClosable: true,
+            render: <><a href={`https://live.blockcypher.com/btc/address/${btcAddress}`} target="_blank" rel="noreferrer">
+                View on BlockCypher
+                <BsArrowUpRightSquare />
+            </a></>
+        })
         console.log(`Withdrew ${value} BTC to ${btcAddress}.`);
     };
 
