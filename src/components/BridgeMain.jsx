@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from 'react'
-import { Box, Container, Stack } from "@chakra-ui/layout"
-import { Text, Button, ButtonGroup, Input, Image, Spinner, useToast } from '@chakra-ui/react'
-import { BsArrowUpRightSquare } from 'react-icons/bs'
+import { Box, Container, Link, Stack } from "@chakra-ui/layout"
+import { Text, Button, ButtonGroup, Input, Image, Spinner, Flex, useToast, useColorModeValue } from '@chakra-ui/react'
+import { BsArrowUpRight, BsArrowUpRightSquare } from 'react-icons/bs'
 import { useWeb3React } from "@web3-react/core"
 import { ethers } from 'ethers'
 import { Bitcoin, Fantom } from "@renproject/chains"
@@ -33,11 +33,19 @@ const swapAbi = [
     'function swapWFTMforRenBTCUnchecked() public returns(uint renBTCOut)',
     'function transferPendingWFTM() public'
 ]
+const renJS = new RenJS("mainnet", { useV2TransactionFormat: true })
+// TODO use fees (but they are only for lock and release)
+// renJS.renVM.estimateTransactionFee("BTC", { name: "Fantom" }, { name: "Bitcoin" }).then((res) =>
+//     console.log(String(res.release)))
+// renJS.getFees({ asset: "BTC", from: , to: Bitcoin }).then((res) => console.log(res))
 
 const BridgeMain = () => {
     const { account, library } = useWeb3React()
     const [estimatedBtcOut, setEstimateBtcOut] = useState(0)
 
+    const containerBg = useColorModeValue("white", "gray.800")
+    const bordersColor = useColorModeValue("gray.300", "gray.600")
+    const textColor = useColorModeValue(!account ? "gray.400" : "black", "white")
     const zooRouter = useRef(null)
     const hyperRouter = useRef(null)
     const elysContract = useRef(null)
@@ -51,6 +59,16 @@ const BridgeMain = () => {
 
     const currentAllowance = useRef(null)
     const [pendingWFTM, setPendingWFTM] = useState(null)
+    const [bridgeTxHash, setBridgeTxHash] = useState([null, null])
+
+    // STAGES:
+    // 0: Not started yet
+    // 1: bridge initiated
+    // 2: transaction on FTM
+    // 3: transaction on RenVM
+    // 4: transaction on BTC-Mainnet
+    // 5: Deposited to account
+    const [bridgeStage, setBridgeStage] = useState(0)
 
     // STAGES:
     // 0: disconnected
@@ -119,6 +137,7 @@ const BridgeMain = () => {
             setRenIn(null)
 
             setTransactionStage(0)
+            setBridgeStage(0)
         }
     }, [account, library])
 
@@ -352,10 +371,11 @@ const BridgeMain = () => {
     const bridgeBTC = async () => {
         let value = renIn.toNumber()
         if (renIn === null) {
-            console.log('ERRROROOROROR')
+            console.log("Error: renIn is null, it shouldn't happen")
             return
         }
-        const renJS = new RenJS("mainnet", { useV2TransactionFormat: true })
+
+        setTransactionStage(5)
         const burnAndRelease = await renJS.burnAndRelease({
             // Send BTC from Fantom back to the Bitcoin blockchain.
             asset: "BTC",
@@ -363,15 +383,18 @@ const BridgeMain = () => {
             from: Fantom(library).Account({ address: account, value }),
         });
 
+        setBridgeStage(1)
         let confirmations = 0;
         await burnAndRelease
             .burn()
             // Fantom transaction confirmations.
             .on("confirmation", (confs) => {
+                console.log(confs)
                 confirmations = confs;
             })
             // Print Fantom transaction hash.
             .on("transactionHash", (txHash) => {
+                setBridgeStage(2)
                 txStatusToast({
                     title: "Transaction submitted on Fantom",
                     description: `https://ftmscan.com/tx/${txHash}`,
@@ -384,6 +407,7 @@ const BridgeMain = () => {
                     </a></>
                 })
                 console.log(`FTM txHash: ${txHash}`)
+                setBridgeTxHash([txHash, bridgeTxHash[1]])
             });
 
         await burnAndRelease
@@ -391,11 +415,12 @@ const BridgeMain = () => {
             // Print RenVM status - "pending", "confirming" or "done".
             .on("status", (status) =>
                 status === "confirming"
-                    ? console.log(`${status} (${confirmations}/15)`)
+                    ? console.log(`${status} (${confirmations}/51)`)
                     : console.log(status)
             )
             // Print RenVM transaction hash
             .on("txHash", (txHash) => {
+                setBridgeStage(3)
                 txStatusToast({
                     title: "Transaction submitted on RenVM",
                     description: `https://explorer.renproject.io/#/tx/${txHash}`,
@@ -408,8 +433,10 @@ const BridgeMain = () => {
                     </a></>
                 })
                 console.log(`RenVM txHash: ${txHash}`)
+                setBridgeTxHash([bridgeTxHash[0], txHash])
             });
 
+        setBridgeStage(5)
         txStatusToast({
             title: "🎉 Your BTC has been deposited",
             description: `https://live.blockcypher.com/btc/address/${btcAddress}`,
@@ -480,15 +507,15 @@ const BridgeMain = () => {
 
     return (
         <Container centerContent mt="16" minWidth="72" pb="32">
-            <Container centerContent alignItems="center" p="4" maxWidth="container.md" bg="white" border="1px" borderColor="blackAlpha.100" roundedTop="3xl" shadow="lg">
-                <Text my="5" textAlign="left" w="full" fontSize="3xl" fontWeight="bold" color={!account ? "gray.400" : "black"}>Bridge</Text>
+            <Container centerContent alignItems="center" p="4" maxWidth="container.md" bg={containerBg} border="1px" borderColor="blackAlpha.100" roundedTop="3xl" shadow="lg">
+                <Text my="5" textAlign="left" w="full" fontSize="3xl" fontWeight="bold" color={textColor}>Bridge</Text>
                 <Stack w="full">
-                    <Stack direction="row" alignItems="center" border="1px" borderColor="gray.300" rounded="md" p="2">
+                    <Stack direction="row" alignItems="center" border="1px" borderColor={bordersColor} rounded="md" p="2">
                         {/* <Stack centerContent alignItems="center" bg="white" border="1px" borderColor="gray.200" h="full" w="32" py="2" px="3" rounded="md" direction="row"> */}
                         <Image borderRadius="full" src="https://gitcoin.co/dynamic/avatar/elyseos" bg="white" boxSize="30px" />
                         {/* <Text fontWeight="bold">ELYS</Text> */}
                         {/* </Stack> */}
-                        <Input value={elysIn} isTruncated type="number" placeholder="0" textAlign="right" fontWeight="bold" fontSize="xl" onChange={e => setElysIn(e.target.value)} onKeyDown={e => preventIllegalAmount(e)} color={!account ? "gray.400" : "black"} />
+                        <Input value={elysIn} isTruncated type="number" placeholder="0" textAlign="right" fontWeight="bold" fontSize="xl" onChange={e => setElysIn(e.target.value)} onKeyDown={e => preventIllegalAmount(e)} color={textColor} />
                     </Stack>
                     <ButtonGroup isAttached variant="outline" w="full">
                         <Button w="full" mr="-px" disabled={!account} onClick={() => setElysInFromPercent(25)}>25%</Button>
@@ -497,10 +524,10 @@ const BridgeMain = () => {
                         <Button w="full" mr="-px" disabled={!account} onClick={() => setElysInFromPercent(100)}>100%</Button>
                     </ButtonGroup>
                 </Stack>
-                <Text w="fit-content" my="2" color={!account ? "gray.400" : "black"}>{`≈ ${estimatedBtcOut} BTC`}</Text>
+                <Text w="fit-content" my="2" color={textColor}>{`≈ ${estimatedBtcOut} BTC`}</Text>
                 {Number(pendingWFTM) ?
                     <>
-                        <Text w="fit-content" mt="2" color={!account ? "gray.400" : "black"}>
+                        <Text w="fit-content" mt="2" color={textColor}>
                             {Number(ethers.utils.formatUnits(pendingWFTM, 18)).toFixed(2)} <b>WFTM</b> pending.
                         </Text>
                         <Button color="blue" mb="2" variant="link" onClick={transferPendingWFTM}>
@@ -509,7 +536,7 @@ const BridgeMain = () => {
                     </> : <></>}
             </Container>
 
-            <Container centerContent alignItems="center" p="4" mt="0.5" maxWidth="container.md" bg="white" border="1px" borderColor="blackAlpha.100" roundedBottom="3xl" shadow="lg">
+            <Container centerContent alignItems="center" p="4" mt="0.5" maxWidth="container.md" bg={containerBg} border="1px" borderColor="blackAlpha.100" roundedBottom="3xl" shadow="lg">
                 <Box w="full" mb="6">
                     <Text mb="1" color={!account ? "blue.400" : "blue"}>Bridge tokens to: </Text>
                     <Input
@@ -522,7 +549,7 @@ const BridgeMain = () => {
                             setBtcAddress(e.target.value)
                             setAddressValidity(validateBitcoinAddress(e.target.value))
                         }}
-                        color={!account ? "gray.400" : "black"}
+                        color={textColor}
                     />
                 </Box>
 
@@ -532,8 +559,20 @@ const BridgeMain = () => {
                 }} w="full" rounded="xl" disabled={getActionButtonDisabled()} onClick={getActionButtonOnClick()}>
                     {getActionButtonState()}
                 </Button>
-
             </Container>
+            {(bridgeStage >= 1) && <Flex justify="space-between" mt="2" w="full" alignItems="center" p="4" maxWidth="container.md" bg={containerBg} border="1px" borderColor="blackAlpha.100" rounded="3xl" shadow="lg">
+                {(bridgeStage === 1) && <Spinner color="blue" mx="auto" />}
+                {(bridgeStage >= 2) && <Link mx="auto" variant="ghost" fontSize="sm" href={`https://ftmscan.com/tx/${bridgeTxHash[0]}`}>
+                    <Stack direction="row" alignItems="center">
+                        <Text>FTM Transaction</Text>
+                        <BsArrowUpRight />
+                    </Stack></Link>}
+                {(bridgeStage >= 3) && <Link mx="auto" variant="ghost" fontSize="sm" href={`https://explorer.renproject.io/#/tx/${bridgeTxHash[1]}`}>
+                    <Stack direction="row" alignItems="center">
+                        <Text>RenVM Transaction</Text>
+                        <BsArrowUpRight />
+                    </Stack></Link>}
+            </Flex>}
         </Container >
     )
 }

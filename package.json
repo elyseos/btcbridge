@@ -1,5 +1,5 @@
 {
-  "name": "elys-bridge",
+  "name": "btcbridge",
   "version": "0.1.0",
   "private": true,
   "dependencies": {
