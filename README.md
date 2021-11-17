@@ -3,6 +3,8 @@
 *Project under development*
 
 -------------
+Test the dapp [here](https://elysbtc.netlify.app/).
+
 An easy-to-use dapp to bridge ELYS token *(Fantom)* as Bitcoin to the Bitcoin Mainnet in the following steps:
 1. Converts **ELYS** to **WFTM**
 2. Converts **WFTM** to **RenBTC**
