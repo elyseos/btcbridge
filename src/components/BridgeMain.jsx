@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from 'react'
 import { Box, Container, Link, Stack } from "@chakra-ui/layout"
 import { Text, Button, ButtonGroup, Input, Image, Spinner, Flex, useToast, useColorModeValue } from '@chakra-ui/react'
+import { ExternalLinkIcon } from '@chakra-ui/icons'
 import { BsArrowUpRight, BsArrowUpRightSquare } from 'react-icons/bs'
 import { useWeb3React } from "@web3-react/core"
 import { ethers } from 'ethers'
@@ -34,16 +35,12 @@ const swapAbi = [
     'function transferPendingWFTM() public'
 ]
 const renJS = new RenJS("mainnet", { useV2TransactionFormat: true })
-// TODO use fees (but they are only for lock and release)
-// renJS.renVM.estimateTransactionFee("BTC", { name: "Fantom" }, { name: "Bitcoin" }).then((res) =>
-//     console.log(String(res.release)))
-// renJS.getFees({ asset: "BTC", from: , to: Bitcoin }).then((res) => console.log(res))
 
 const BridgeMain = () => {
     const { account, library } = useWeb3React()
     const [estimatedBtcOut, setEstimateBtcOut] = useState(0)
 
-    const containerBg = useColorModeValue("white", "gray.800")
+    const containerBg = useColorModeValue("white", "gray.700")
     const bordersColor = useColorModeValue("gray.300", "gray.600")
     const textColor = useColorModeValue(!account ? "gray.400" : "black", "white")
     const zooRouter = useRef(null)
@@ -66,8 +63,8 @@ const BridgeMain = () => {
     // 1: bridge initiated
     // 2: transaction on FTM
     // 3: transaction on RenVM
-    // 4: transaction on BTC-Mainnet
-    // 5: Deposited to account
+    // 4: executing
+    // 5: transaction on BTC-Mainnet
     const [bridgeStage, setBridgeStage] = useState(0)
 
     // STAGES:
@@ -78,6 +75,7 @@ const BridgeMain = () => {
     // 4: bridge
     // 5: walletConfirm
     // 6: waitingTxConfirm
+    // 7. bridgeProcess
     const [transactionStage, setTransactionStage] = useState(0)
 
     const txStatusToast = useToast()
@@ -202,6 +200,26 @@ const BridgeMain = () => {
         }
     }
 
+    // RESTARTS WHOLE PROCESS FOR A CONNECTED WALLET
+    const restartProcess = () => {
+        elysContract.current.balanceOf(account).then((balance) => {
+            elysBalance.current = ethers.utils.formatUnits(balance, 5)
+            console.log("ELYS Balance:", elysBalance.current)
+        })
+
+        // FETCH APPROVED AMOUNT AND UPDATE TRANSACTION STATE IF REQUIRED
+        elysContract.current.allowance(account, SWAP_CONTRACT_ADDRESS).then((out) => {
+            currentAllowance.current = out
+            console.log("ELYS approved to swap contract:", String(currentAllowance.current))
+            setApprovalState()
+            setBridgeStage(0)
+        })
+
+        swapContract.current.pendingWFTM('0x6e2f61A92D4771BF8FDC1c0a7b27ffA13a4C054c').then(res => {
+            setPendingWFTM(res)
+        })
+    }
+
     // ----------------------------------INPUT CONTROL AND CHECKING----------------------------------
     // PREVENTS ILLEGAL INPUT IN ELYS AMOUNT
     const preventIllegalAmount = (e) => {
@@ -234,7 +252,7 @@ const BridgeMain = () => {
         let tx = elysContract.current.approve(SWAP_CONTRACT_ADDRESS, ethers.BigNumber.from('2').pow('256').sub('1'))
         tx.then((tx) => {
             console.log(tx)
-            raiseTxSentToast()
+            raiseTxSentToast(tx.hash)
             setTransactionStage(6)
             continuousCheckTransactionMined(tx.hash, 1)
         }).catch((err) => {
@@ -271,7 +289,7 @@ const BridgeMain = () => {
         let txStatus = swapContract.current.swapELYSforWFTMUnchecked(elysToSwap)
         txStatus.then(async (tx) => {
             console.log(tx)
-            raiseTxSentToast()
+            raiseTxSentToast(tx.hash)
             setTransactionStage(6)
             await continuousCheckTransactionMined(tx.hash, 2)
             await swapContract.current.pendingWFTM('0x6e2f61A92D4771BF8FDC1c0a7b27ffA13a4C054c').then(res => {
@@ -296,7 +314,7 @@ const BridgeMain = () => {
         let tx = swapContract.current.swapWFTMforRenBTCUnchecked()
         tx.then(async (tx) => {
             console.log(tx)
-            raiseTxSentToast()
+            raiseTxSentToast(tx.hash)
             setTransactionStage(6)
             await continuousCheckTransactionMined(tx.hash, 3)
             setPendingWFTM(0)
@@ -318,7 +336,7 @@ const BridgeMain = () => {
         let txStatus = swapContract.current.transferPendingWFTM()
         txStatus.then((tx) => {
             console.log(tx)
-            raiseTxSentToast()
+            raiseTxSentToast(tx.hash)
             setTransactionStage(6)
             continuousCheckTransactionMined(tx.hash, 2)
             setPendingWFTM(0)
@@ -357,10 +375,12 @@ const BridgeMain = () => {
     }
 
     // RAISE TRANSACTION SENT TOAST
-    const raiseTxSentToast = () => {
+    const raiseTxSentToast = (txHash) => {
         txStatusToast({
             title: "⏲️ Transaction Sent",
-            description: "Waiting for confirmation...",
+            description: <>View on <Link href={`https://ftmscan.com/tx/${txHash}`} isExternal>
+                explorer<ExternalLinkIcon mx="2px" />
+            </Link></>,
             status: "info",
             duration: 9000,
             isClosable: true,
@@ -383,7 +403,7 @@ const BridgeMain = () => {
             from: Fantom(library).Account({ address: account, value }),
         });
 
-        setBridgeStage(1)
+
         let confirmations = 0;
         await burnAndRelease
             .burn()
@@ -394,17 +414,16 @@ const BridgeMain = () => {
             })
             // Print Fantom transaction hash.
             .on("transactionHash", (txHash) => {
-                setBridgeStage(2)
+                setTransactionStage(7)
+                setBridgeStage(2) //TODO change action button to (spin) transaction on FTM
                 txStatusToast({
                     title: "Transaction submitted on Fantom",
-                    description: `https://ftmscan.com/tx/${txHash}`,
+                    description: <>View on <Link href={`https://ftmscan.com/tx/${txHash}`} isExternal>
+                        explorer<ExternalLinkIcon mx="2px" />
+                    </Link></>,
                     status: "info",
                     duration: 15000,
                     isClosable: true,
-                    render: <><a href={`https://ftmscan.com/tx/${txHash}`} target="_blank" rel="noreferrer">
-                        View on FTMScan
-                        <BsArrowUpRightSquare />
-                    </a></>
                 })
                 console.log(`FTM txHash: ${txHash}`)
                 setBridgeTxHash([txHash, bridgeTxHash[1]])
@@ -413,40 +432,37 @@ const BridgeMain = () => {
         await burnAndRelease
             .release()
             // Print RenVM status - "pending", "confirming" or "done".
-            .on("status", (status) =>
+            .on("status", (status) => {
+                (status === "executing") && setBridgeStage(4)
                 status === "confirming"
                     ? console.log(`${status} (${confirmations}/51)`)
                     : console.log(status)
-            )
+            })
             // Print RenVM transaction hash
             .on("txHash", (txHash) => {
-                setBridgeStage(3)
+                setBridgeStage(3)//TODO change action button to (spin) transaction on renVM
                 txStatusToast({
                     title: "Transaction submitted on RenVM",
-                    description: `https://explorer.renproject.io/#/tx/${txHash}`,
+                    description: <>View on <Link href={`https://explorer.renproject.io/#/tx/${txHash}`} isExternal>
+                        explorer<ExternalLinkIcon mx="2px" />
+                    </Link></>,
                     status: "info",
                     duration: 15000,
                     isClosable: true,
-                    render: <><a href={`https://explorer.renproject.io/#/tx/${txHash}`} target="_blank" rel="noreferrer">
-                        View on BlockCypher
-                        <BsArrowUpRightSquare />
-                    </a></>
                 })
                 console.log(`RenVM txHash: ${txHash}`)
                 setBridgeTxHash([bridgeTxHash[0], txHash])
             });
 
-        setBridgeStage(5)
+        setBridgeStage(5) // give restart button
         txStatusToast({
-            title: "🎉 Your BTC has been deposited",
-            description: `https://live.blockcypher.com/btc/address/${btcAddress}`,
+            title: "🎉 Transaction submitted on Bitcoin",
+            description: <>View on <Link href={`https://live.blockcypher.com/btc/address/${btcAddress}`} isExternal>
+                explorer<ExternalLinkIcon mx="2px" />
+            </Link></>,
             status: "success",
             duration: 15000,
             isClosable: true,
-            render: <><a href={`https://live.blockcypher.com/btc/address/${btcAddress}`} target="_blank" rel="noreferrer">
-                View on BlockCypher
-                <BsArrowUpRightSquare />
-            </a></>
         })
         console.log(`Withdrew ${value} BTC to ${btcAddress}.`);
     };
@@ -470,6 +486,16 @@ const BridgeMain = () => {
             return <Stack direction="row"><Spinner color="white" /> <Text>Confirm in your wallet</Text></Stack>
         else if (transactionStage === 6)
             return <Stack direction="row"><Spinner color="white" /> <Text>Waiting for confirmation</Text></Stack>
+        else if (transactionStage === 7) {
+            if (bridgeStage === 2)
+                return <Stack direction="row"><Spinner color="white" /> <Text>Transaction on FTM</Text></Stack>
+            if (bridgeStage === 3)
+                return <Stack direction="row"><Spinner color="white" /> <Text>Transaction on RenVM</Text></Stack>
+            if (bridgeStage === 4)
+                return <Stack direction="row"><Spinner color="white" /> <Text>Executing</Text></Stack>
+            if (bridgeStage === 5)
+                return <Text>Restart</Text>
+        }
         else <Text>Invalid State</Text>
     }
 
@@ -487,6 +513,11 @@ const BridgeMain = () => {
             return false
         else if (transactionStage === 5)
             return true
+        else if (transactionStage === 7) {
+            if (bridgeStage === 5)
+                return false
+            else return true
+        }
         else return true
     }
 
@@ -502,6 +533,10 @@ const BridgeMain = () => {
             return swapWFTMforRenBTCUnchecked
         else if (transactionStage === 4)
             return bridgeBTC
+        else if (transactionStage === 7) {
+            if (bridgeStage === 5)
+                return restartProcess
+        }
         else return undefined
     }
 
@@ -560,19 +595,26 @@ const BridgeMain = () => {
                     {getActionButtonState()}
                 </Button>
             </Container>
-            {(bridgeStage >= 1) && <Flex justify="space-between" mt="2" w="full" alignItems="center" p="4" maxWidth="container.md" bg={containerBg} border="1px" borderColor="blackAlpha.100" rounded="3xl" shadow="lg">
+            {(bridgeStage >= 1) && <Flex justify="space-between" mt="2" w="full" alignItems="center" p="4" maxWidth="container.md" bg={containerBg} border="1px" borderColor="blackAlpha.100" roundedTop="3xl" shadow="lg">
                 {(bridgeStage === 1) && <Spinner color="blue" mx="auto" />}
-                {(bridgeStage >= 2) && <Link mx="auto" variant="ghost" fontSize="sm" href={`https://ftmscan.com/tx/${bridgeTxHash[0]}`}>
+                {(bridgeStage >= 2) && <Link mx="auto" variant="ghost" fontSize="sm" href={`https://ftmscan.com/tx/${bridgeTxHash[0]}`} isExternal>
                     <Stack direction="row" alignItems="center">
                         <Text>FTM Transaction</Text>
                         <BsArrowUpRight />
                     </Stack></Link>}
-                {(bridgeStage >= 3) && <Link mx="auto" variant="ghost" fontSize="sm" href={`https://explorer.renproject.io/#/tx/${bridgeTxHash[1]}`}>
+                {(bridgeStage >= 3) && <Link mx="auto" variant="ghost" fontSize="sm" href={`https://explorer.renproject.io/#/tx/${bridgeTxHash[1]}`} isExternal>
                     <Stack direction="row" alignItems="center">
                         <Text>RenVM Transaction</Text>
                         <BsArrowUpRight />
                     </Stack></Link>}
             </Flex>}
+            {(bridgeStage >= 1) && <Container centerContent alignItems="center" p="4" maxWidth="container.md" bg="blue" border="1px" borderColor="blackAlpha.100" roundedBottom="3xl" shadow="lg">
+                {(bridgeStage >= 5) ? <Link mx="auto" variant="ghost" fontSize="sm" href={`https://live.blockcypher.com/btc/address/${btcAddress}`} isExternal>
+                    <Stack direction="row" alignItems="center">
+                        <Text>View transaction on Bitcoin</Text>
+                        <BsArrowUpRight />
+                    </Stack></Link> : <Spinner color="white" mx="auto" />}
+            </Container>}
         </Container >
     )
 }
