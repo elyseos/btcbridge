@@ -16,3 +16,4 @@ Requires Metamask installed to use.
 
 In case the process is disrupted before bridging, RenBridge can be used as the renBTC exists on the user's wallet.
 
+Swap contract deployed at [0x924eE9804f297A3225ed39FdF8162beB0D9a9F21](https://ftmscan.com/address/0x924eE9804f297A3225ed39FdF8162beB0D9a9F21).
