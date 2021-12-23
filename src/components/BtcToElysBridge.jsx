@@ -2,41 +2,25 @@ import { useRef, useState, useEffect } from 'react'
 import { Box, Container, Link, Stack } from "@chakra-ui/layout"
 import { Text, Button, ButtonGroup, Input, Image, Spinner, Flex, useToast, useColorModeValue } from '@chakra-ui/react'
 import { ExternalLinkIcon } from '@chakra-ui/icons'
-import { BsArrowUpRight, BsArrowUpRightSquare } from 'react-icons/bs'
+import { BsArrowUpRight } from 'react-icons/bs'
 import { useWeb3React } from "@web3-react/core"
 import { ethers } from 'ethers'
 import { Bitcoin, Fantom } from "@renproject/chains"
 import RenJS from "@renproject/ren";
 import WAValidator from 'multicoin-address-validator'
+import {
+    ELYS_CONTRACT_ADDRESS,
+    FTM_CONTRACT_ADDRESS,
+    HYPER_ROUTER_ADDRESS,
+    RENBTC_CONTRACT__ADDRESS,
+    SWAP_CONTRACT_ADDRESS,
+    ZOO_ROUTER_ADDRESS,
+    routerAbi, swapAbi, tokenAbi
+} from '../bridge_constants'
 
-// CONTRACT ADDRESSES
-const SWAP_CONTRACT_ADDRESS = '0x924eE9804f297A3225ed39FdF8162beB0D9a9F21'
-const ELYS_CONTRACT_ADDRESS = '0xd89cc0d2A28a769eADeF50fFf74EBC07405DB9Fc'
-const FTM_CONTRACT_ADDRESS = '0x21be370D5312f44cB42ce377BC9b8a0cEF1A4C83'
-const RENBTC_CONTRACT__ADDRESS = '0xdbf31df14b66535af65aac99c32e9ea844e14501'
-const ZOO_ROUTER_ADDRESS = '0x40b12a3E261416fF0035586ff96e23c2894560f2'
-const HYPER_ROUTER_ADDRESS = '0x53c153a0df7E050BbEFbb70eE9632061f12795fB'
-
-// CONTRACT ABIs
-const routerAbi = [
-    'function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts)'
-]
-const tokenAbi = [
-    'function balanceOf(address _owner) public view returns(uint256 balance)',
-    'function approve(address _spender, uint256 _value) public returns (bool success)',
-    'function allowance(address _owner, address _spender) public view returns (uint256 remaining)'
-]
-
-const swapAbi = [
-    'event WFTMtoRenBTCSwap(address indexed, uint, uint)',
-    'function pendingWFTM(address addr) public view returns(uint)',
-    'function swapELYSforWFTMUnchecked(uint amountIn) public returns(uint WFTMOut)',
-    'function swapWFTMforRenBTCUnchecked() public returns(uint renBTCOut)',
-    'function transferPendingWFTM() public'
-]
 const renJS = new RenJS("mainnet", { useV2TransactionFormat: true })
 
-const BridgeMain = () => {
+const ElysToBtcBridge = () => {
     const { account, library } = useWeb3React()
     const [estimatedBtcOut, setEstimateBtcOut] = useState(0)
 
@@ -387,72 +371,55 @@ const BridgeMain = () => {
         })
     }
 
-    // (UNTESTED) BRIDGE RENBTC TO BTC-MAINNET
+    // BRIDGE BTC TO FANTOM
     const bridgeBTC = async () => {
-        let value = renIn.toNumber()
-        if (renIn === null) {
-            console.log("Error: renIn is null, it shouldn't happen")
-            return
-        }
-
-        setTransactionStage(5)
-        const burnAndRelease = await renJS.burnAndRelease({
-            // Send BTC from Fantom back to the Bitcoin blockchain.
+        const mint = await renJS.lockAndMint({
             asset: "BTC",
-            to: Bitcoin().Address(btcAddress),
-            from: Fantom(library).Account({ address: account, value }),
+            from: Bitcoin(),
+            to: Fantom(library).Address(account),
         });
 
+        // Show the gateway address to the user so that they can transfer their BTC to it.
+        console.log(`Deposit BTC to ${mint.gatewayAddress}`);
 
-        let confirmations = 0;
-        await burnAndRelease
-            .burn()
-            // Fantom transaction confirmations.
-            .on("confirmation", (confs) => {
-                console.log(confs)
-                confirmations = confs;
-            })
-            // Print Fantom transaction hash.
-            .on("transactionHash", (txHash) => {
-                setTransactionStage(7)
-                setBridgeStage(2) //TODO change action button to (spin) transaction on FTM
-                txStatusToast({
-                    title: "Transaction submitted on Fantom",
-                    description: <>View on <Link href={`https://ftmscan.com/tx/${txHash}`} isExternal>
-                        explorer<ExternalLinkIcon mx="2px" />
-                    </Link></>,
-                    status: "info",
-                    duration: 15000,
-                    isClosable: true,
-                })
-                console.log(`FTM txHash: ${txHash}`)
-                setBridgeTxHash([txHash, bridgeTxHash[1]])
-            });
+        mint.on("deposit", async (deposit) => {
+            // Details of the deposit are available from `deposit.depositDetails`.
+            console.log("Deposit log:", deposit.depositDetails)
 
-        await burnAndRelease
-            .release()
-            // Print RenVM status - "pending", "confirming" or "done".
-            .on("status", (status) => {
-                (status === "executing") && setBridgeStage(4)
-                status === "confirming"
-                    ? console.log(`${status} (${confirmations}/51)`)
-                    : console.log(status)
-            })
-            // Print RenVM transaction hash
-            .on("txHash", (txHash) => {
-                setBridgeStage(3)//TODO change action button to (spin) transaction on renVM
-                txStatusToast({
-                    title: "Transaction submitted on RenVM",
-                    description: <>View on <Link href={`https://explorer.renproject.io/#/tx/${txHash}`} isExternal>
-                        explorer<ExternalLinkIcon mx="2px" />
-                    </Link></>,
-                    status: "info",
-                    duration: 15000,
-                    isClosable: true,
-                })
-                console.log(`RenVM txHash: ${txHash}`)
-                setBridgeTxHash([bridgeTxHash[0], txHash])
-            });
+            const hash = deposit.txHash();
+            const depositLog = (msg) =>
+                this.log(
+                    `BTC deposit: ${Bitcoin.utils.transactionExplorerLink(
+                        deposit.depositDetails.transaction,
+                        "testnet"
+                    )}\n
+                RenVM Hash: ${hash}\n
+                Status: ${deposit.status}\n
+                ${msg}`
+                );
+
+            await deposit
+                .confirmed()
+                .on("target", (target) => depositLog(`0/${target} confirmations`))
+                .on("confirmation", (confs, target) =>
+                    depositLog(`${confs}/${target} confirmations`)
+                );
+
+            await deposit
+                .signed()
+                // Print RenVM status - "pending", "confirming" or "done".
+                .on("status", (status) => depositLog(`Status: ${status}`));
+
+            await deposit
+                .mint()
+                // Print Ethereum transaction hash.
+                .on("transactionHash", (txHash) =>
+                    this.log(`Ethereum transaction: ${String(txHash)}\nSubmitting...`)
+                );
+
+            this.log(`Deposited BTC.`);
+        });
+        setTransactionStage(5)
 
         setBridgeStage(5) // give restart button
         txStatusToast({
@@ -464,7 +431,7 @@ const BridgeMain = () => {
             duration: 15000,
             isClosable: true,
         })
-        console.log(`Withdrew ${value} BTC to ${btcAddress}.`);
+        console.log(`Withdrew BTC to ${btcAddress}.`);
     };
 
     //----------------------------------ACTION BUTTON MANAGEMENT----------------------------------
@@ -619,4 +586,4 @@ const BridgeMain = () => {
     )
 }
 
-export default BridgeMain
+export default ElysToBtcBridge
