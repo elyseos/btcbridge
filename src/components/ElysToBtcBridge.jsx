@@ -15,8 +15,10 @@ import {
     RENBTC_CONTRACT__ADDRESS,
     SWAP_CONTRACT_ADDRESS,
     ZOO_ROUTER_ADDRESS,
-    routerAbi, swapAbi, tokenAbi
+    routerAbi, tokenAbi
 } from '../bridge_constants'
+import swapArtifact from '../artifacts/contracts/ELYSBTCSwap.sol/ELYSBTCSwap.json'
+let swapAbi = swapArtifact.abi
 
 const renJS = new RenJS("mainnet", { useV2TransactionFormat: true })
 
@@ -87,12 +89,12 @@ const ElysToBtcBridge = () => {
                 console.log("ELYS approved to swap contract:", String(currentAllowance.current))
             })
 
-            swapContract.current.on("ELYStoRenBTCSwap", (addx, val1, val2, out) => {
-                console.log("ELYStoRenBTCSwap Event:", addx, val1, val2, out)
+            swapContract.current.on("ELYStoRenBTCSwap", (user, ELYSin, renBTCout, out) => {
+                console.log("ELYStoRenBTCSwap Event:", user, ELYSin, renBTCout, out)
 
-                if (addx === account) {
-                    setRenIn(val2)
-                    console.log("EVENT INFO:", addx, val1, val2, out)
+                if (user === account) {
+                    setRenIn(renBTCout)
+                    console.log("EVENT INFO:", user, ELYSin, renBTCout, out)
                 }
             });
 

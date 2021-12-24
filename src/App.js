@@ -1,4 +1,4 @@
-import { useColorMode, useColorModeValue } from "@chakra-ui/color-mode";
+import { useColorMode } from "@chakra-ui/color-mode";
 import { Square } from "@chakra-ui/layout";
 import ElysToBtcBridge from "./components/ElysToBtcBridge"
 import Navbar from "./components/Navbar"

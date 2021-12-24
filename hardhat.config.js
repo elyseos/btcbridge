@@ -24,5 +24,17 @@ module.exports = {
       }
     }
   },
-  solidity: "0.8.6",
+  solidity: {
+    compilers: [
+      {
+        version: "0.8.6"
+      },
+      {
+        version: "0.6.6"
+      }
+    ]
+  },
+  paths: {
+    artifacts: "./src/artifacts"
+  }
 };

@@ -15,8 +15,3 @@ export const tokenAbi = [
     'function approve(address _spender, uint256 _value) public returns (bool success)',
     'function allowance(address _owner, address _spender) public view returns (uint256 remaining)'
 ]
-
-export const swapAbi = [
-    'event ELYStoRenBTCSwap(address indexed, uint, uint)',
-    'function swapELYSToRenBTC(uint amountIn) public returns(uint renBTCOut)',
-]
