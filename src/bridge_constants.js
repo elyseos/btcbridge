@@ -17,9 +17,6 @@ export const tokenAbi = [
 ]
 
 export const swapAbi = [
-    'event WFTMtoRenBTCSwap(address indexed, uint, uint)',
-    'function pendingWFTM(address addr) public view returns(uint)',
-    'function swapELYSforWFTMUnchecked(uint amountIn) public returns(uint WFTMOut)',
-    'function swapWFTMforRenBTCUnchecked() public returns(uint renBTCOut)',
-    'function transferPendingWFTM() public'
+    'event ELYStoRenBTCSwap(address indexed, uint, uint)',
+    'function swapELYSToRenBTC(uint amountIn) public returns(uint renBTCOut)',
 ]
