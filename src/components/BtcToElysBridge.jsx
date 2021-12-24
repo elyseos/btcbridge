@@ -1,13 +1,14 @@
 import { useRef, useState, useEffect } from 'react'
 import { Box, Container, Link, Stack } from "@chakra-ui/layout"
-import { Text, Button, ButtonGroup, Input, Image, Spinner, Flex, useToast, useColorModeValue } from '@chakra-ui/react'
+import { Text, Button, Input, Image, Spinner, Flex, useToast, useColorModeValue } from '@chakra-ui/react'
 import { ExternalLinkIcon } from '@chakra-ui/icons'
 import { BsArrowUpRight } from 'react-icons/bs'
 import { useWeb3React } from "@web3-react/core"
 import { ethers } from 'ethers'
 import { Bitcoin, Fantom } from "@renproject/chains"
 import RenJS from "@renproject/ren";
-import WAValidator from 'multicoin-address-validator'
+import QRCode from "react-qr-code";
+
 import {
     ELYS_CONTRACT_ADDRESS,
     FTM_CONTRACT_ADDRESS,
@@ -165,122 +166,71 @@ const BtcToElysBridge = () => {
 
     // BRIDGE BTC TO FANTOM
     const bridgeBTC = async () => {
-        let value = elysOut.toNumber()
-        if (elysOut === null) {
-            console.log("Error: elysOut is null, it shouldn't happen")
-            return
-        }
-
-        setTransactionStage(TS_CONFIRM_TX)
-        const burnAndRelease = await renJS.burnAndRelease({
-            // Send BTC from Fantom back to the Bitcoin blockchain.
+        const mint = await renJS.lockAndMint({
+            // Send BTC from the Bitcoin blockchain to the Ethereum blockchain.
             asset: "BTC",
-            to: Bitcoin().Address(btcAddress),
-            from: Fantom(library).Account({ address: account, value }),
+            from: Bitcoin(),
+            to: Fantom(library).Contract({
+                sendTo: SWAP_CONTRACT_ADDRESS,
+
+                contractFn: "swapBTCToELYS",
+
+                contractParams: [
+                    {
+                        name: "_user",
+                        type: "address",
+                        value: account,
+                    },
+                ],
+            }),
         });
 
+        setBtcAddress(mint.gatewayAddress)
+        setBridgeStage(REN_GATEWAY_SHOW)
 
-        let confirmations = 0;
-        await burnAndRelease
-            .burn()
-            // Fantom transaction confirmations.
-            .on("confirmation", (confs) => {
-                setBridgeStage(REN_TX_ON_RENVM)
-                console.log(confs)
-                confirmations = confs;
-            })
-            // Print Fantom transaction hash.
-            .on("transactionHash", (txHash) => {
-                setTransactionStage(TS_REN_BRIDGE_PROCESSING)
-                setBridgeStage(REN_TX_ON_FTM)
-                txStatusToast({
-                    title: "Transaction submitted on Fantom",
-                    description: <>View on <Link href={`https://ftmscan.com/tx/${txHash}`} isExternal>
-                        explorer<ExternalLinkIcon mx="2px" />
-                    </Link></>,
-                    status: "info",
-                    duration: 15000,
-                    isClosable: true,
-                })
-                console.log(`FTM txHash: ${txHash}`)
-                setBridgeTxHash([txHash, bridgeTxHash[1]])
-            });
+        mint.on("deposit", async (deposit) => {
+            const hash = deposit.txHash();
+            const depositLog = (msg) =>
+                console.log(
+                    `BTC deposit: ${Bitcoin.utils.transactionExplorerLink(
+                        deposit.depositDetails.transaction,
+                        "testnet"
+                    )}\n
+                    RenVM Hash: ${hash}\n
+                    Status: ${deposit.status}\n
+                    ${msg}`
+                );
 
-        await burnAndRelease
-            .release()
-            // Print RenVM status - "pending", "confirming" or "done".
-            .on("status", (status) => {
-                (status === "executing") && setBridgeStage(REN_EXEC)
-                status === "confirming"
-                    ? console.log(`${status} (${confirmations}/51)`)
-                    : console.log(status)
-            })
-            // Print RenVM transaction hash
-            .on("txHash", (txHash) => {
-                setBridgeStage(REN_EXEC)
-                txStatusToast({
-                    title: "Transaction confirmed on RenVM",
-                    description: <>View on <Link href={`https://explorer.renproject.io/#/tx/${txHash}`} isExternal>
-                        explorer<ExternalLinkIcon mx="2px" />
-                    </Link></>,
-                    status: "info",
-                    duration: 15000,
-                    isClosable: true,
-                })
-                console.log(`RenVM txHash: ${txHash}`)
-                setBridgeTxHash([bridgeTxHash[0], txHash])
-            }).catch((e) => {
-                console.log(e)
-                setTransactionStage(TS_SWAP_ELYS_RENBTC)
-                setBridgeStage(REN_TX_ON_RENVM)
-                txStatusToast({
-                    title: e.toString(),
-                    status: "error",
-                    duration: 15000,
-                    isClosable: true,
-                })
-            });
+            await deposit
+                .confirmed()
+                .on("target", (target) => depositLog(`0/${target} confirmations`))
+                .on("confirmation", (confs, target) =>
+                    depositLog(`${confs}/${target} confirmations`)
+                );
 
-        setBridgeStage(REN_TX_ON_BTC) // give restart button
-        txStatusToast({
-            title: "🎉 Transaction submitted on Bitcoin",
-            description: <>View on <Link href={`https://live.blockcypher.com/btc/address/${btcAddress}`} isExternal>
-                explorer<ExternalLinkIcon mx="2px" />
-            </Link></>,
-            status: "success",
-            duration: 15000,
-            isClosable: true,
-        })
-        console.log(`Withdrew ${value} BTC to ${btcAddress}.`);
+            await deposit
+                .signed()
+                // Print RenVM status - "pending", "confirming" or "done".
+                .on("status", (status) => depositLog(`Status: ${status}`));
+
+            await deposit
+                .mint()
+                // Print Ethereum transaction hash.
+                .on("transactionHash", (txHash) =>
+                    this.log(`Ethereum transaction: ${String(txHash)}\nSubmitting...`)
+                );
+
+            this.log(`Deposited BTC.`);
+        });
     };
 
     //----------------------------------ACTION BUTTON MANAGEMENT----------------------------------
     // CHANGES ACTION BUTTON CONTENT BASED ON TRANSACTION-STATE
     const getActionButtonState = () => {
-        if (transactionStage === TS_WALLET_DISCONNECTED)
-            return <Text>Connect Wallet</Text>
-        else if (transactionStage === TS_APPROVE_ELYS)
-            return <Text>Approve ELYS</Text>
-        else if (transactionStage === TS_SWAP_ELYS_RENBTC)
-            return <Text>Swap to renBTC</Text>
-        else if ((transactionStage === TS_REN_BRIDGE) && (elysOut === null))
-            return <Stack direction="row"><Spinner color="white" /> <Text>Fetching renBTC amount</Text></Stack>
-        else if (transactionStage === TS_REN_BRIDGE)
-            return <Text>Bridge BTC</Text>
-        else if (transactionStage === TS_CONFIRM_TX)
-            return <Stack direction="row"><Spinner color="white" /> <Text>Confirm in your wallet</Text></Stack>
-        else if (transactionStage === TS_TX_CONFIRM_WAIT)
-            return <Stack direction="row"><Spinner color="white" /> <Text>Waiting for confirmation</Text></Stack>
-        else if (transactionStage === TS_REN_BRIDGE_PROCESSING) {
-            if (bridgeStage === REN_TX_ON_FTM)
-                return <Stack direction="row"><Spinner color="white" /> <Text>Transaction on FTM</Text></Stack>
-            if (bridgeStage === REN_TX_ON_RENVM)
-                return <Stack direction="row"><Spinner color="white" /> <Text>Transaction on RenVM</Text></Stack>
-            if (bridgeStage === REN_EXEC)
-                return <Stack direction="row"><Spinner color="white" /> <Text>Executing</Text></Stack>
-            if (bridgeStage === REN_TX_ON_BTC)
-                return <Text>Restart</Text>
-        }
+        if (bridgeStage === REN_WAITING)
+            return <Text>Get Gateway Address</Text>
+        else if (bridgeStage === REN_GATEWAY_SHOW)
+            return <Text>Waiting for BTC Deposit</Text>
         else <Text>Invalid State</Text>
     }
 
@@ -288,19 +238,10 @@ const BtcToElysBridge = () => {
     const getActionButtonDisabled = () => {
         if (!account)
             return true
-        if (transactionStage === TS_APPROVE_ELYS)
+        if (bridgeStage === REN_WAITING)
             return false
-        else if ((transactionStage === TS_SWAP_ELYS_RENBTC) && (Number(btcIn)))
-            return false
-        else if ((transactionStage === TS_REN_BRIDGE) && addressValidity && (elysOut != null))
-            return false
-        else if (transactionStage === TS_CONFIRM_TX)
+        else if (bridgeStage === REN_GATEWAY_SHOW)
             return true
-        else if (transactionStage === TS_REN_BRIDGE_PROCESSING) {
-            if (bridgeStage === REN_TX_ON_BTC)
-                return false
-            else return true
-        }
         else return true
     }
 
@@ -308,17 +249,8 @@ const BtcToElysBridge = () => {
     const getActionButtonOnClick = () => {
         if (!account)
             return undefined
-        if (transactionStage === TS_APPROVE_ELYS)
-            return approveElysToContract
-        else if (transactionStage === TS_SWAP_ELYS_RENBTC)
-            return swapELYSforRenBTC
-        else if (transactionStage === TS_REN_BRIDGE)
-            return bridgeBTC
-        else if (transactionStage === TS_REN_BRIDGE_PROCESSING) {
-            if (bridgeStage === REN_TX_ON_BTC)
-                return restartProcess
-        }
-        else return undefined
+        if (bridgeStage === REN_WAITING)
+            bridgeBTC()
     }
 
     return (
@@ -327,47 +259,19 @@ const BtcToElysBridge = () => {
                 <Text my="5" textAlign="left" w="full" fontSize="3xl" fontWeight="bold" color={textColor}>Bridge</Text>
                 <Stack w="full">
                     <Stack direction="row" alignItems="center" border="1px" borderColor={bordersColor} rounded="md" p="2">
-                        {/* <Stack centerContent alignItems="center" bg="white" border="1px" borderColor="gray.200" h="full" w="32" py="2" px="3" rounded="md" direction="row"> */}
                         <Image borderRadius="full" src="https://gitcoin.co/dynamic/avatar/elyseos" bg="white" boxSize="30px" />
-                        {/* <Text fontWeight="bold">ELYS</Text> */}
-                        {/* </Stack> */}
                         <Input value={btcIn} isTruncated type="number" placeholder="0" textAlign="right" fontWeight="bold" fontSize="xl" onChange={e => setBtcIn(e.target.value)} onKeyDown={e => preventIllegalAmount(e)} color={textColor} />
                     </Stack>
-                    <ButtonGroup isAttached variant="outline" w="full">
-                        <Button w="full" mr="-px" disabled={!account} onClick={() => setBtcInFromPercent(25)}>25%</Button>
-                        <Button w="full" mr="-px" disabled={!account} onClick={() => setBtcInFromPercent(50)}>50%</Button>
-                        <Button w="full" mr="-px" disabled={!account} onClick={() => setBtcInFromPercent(75)}>75%</Button>
-                        <Button w="full" mr="-px" disabled={!account} onClick={() => setBtcInFromPercent(100)}>100%</Button>
-                    </ButtonGroup>
                 </Stack>
-                <Text w="fit-content" my="2" color={textColor}>{`≈ ${estimatedElysOut} BTC`}</Text>
-
-                {Number(elysOut) ?
-                    <Text w="fit-content" mt="2" color={textColor}>
-                        {Number(ethers.utils.formatUnits(elysOut, 8)).toFixed(8)} <b>renBTC</b> to transfer.
-                    </Text>
-                    : <></>
-                }
+                <Text w="fit-content" my="2" color={textColor}>{`≈ ${estimatedElysOut} ELYS`}</Text>
             </Container>
 
             <Container centerContent alignItems="center" p="4" mt="0.5" maxWidth="container.md" bg={containerBg} border="1px" borderColor="blackAlpha.100" roundedBottom="3xl" shadow="lg">
-                <Box w="full" mb="6">
-                    <Text mb="1" color={!account ? "blue.400" : "blue"}>Bridge tokens to: </Text>
-                    <Input
-                        isTruncated
-                        isInvalid={!addressValidity && btcAddress.length !== 0}
-                        // value={}
-                        // onChange={handleChange} // Check validity of address
-                        placeholder="Enter destination Bitcoin address"
-                        onChange={e => {
-                            setBtcAddress(e.target.value)
-                            setAddressValidity(validateBitcoinAddress(e.target.value))
-                        }}
-                        color={textColor}
-                    />
-                </Box>
-
-                {/* <Stack w="full"> */}
+                {btcAddress && <>
+                    <Text fontWeight={'bold'}>Deposit BTC at:</Text>
+                    <Text backgroundColor={'beige'} py="0.5" px="1.5" rounded={'lg'}>{btcAddress}</Text>
+                    <Box pb="10" pt="3"><QRCode value={btcAddress} /></Box>
+                </>}
                 <Button size="lg" colorScheme="purple" bgGradient="linear(to-r, purple.400, pink.400)" _hover={{
                     bgGradient: "linear(to-r, purple.500, pink.500)",
                 }} w="full" rounded="xl" disabled={getActionButtonDisabled()} onClick={getActionButtonOnClick()}>
@@ -376,12 +280,12 @@ const BtcToElysBridge = () => {
             </Container>
             {
                 (bridgeStage > REN_WAITING) && <Flex justify="space-between" mt="2" w="full" alignItems="center" p="4" maxWidth="container.md" bg={containerBg} border="1px" borderColor="blackAlpha.100" roundedTop="3xl" shadow="lg">
-                    {(bridgeStage >= REN_TX_ON_FTM) && <Link mx="auto" variant="ghost" fontSize="sm" href={`https://ftmscan.com/tx/${bridgeTxHash[0]}`} isExternal>
+                    {(bridgeStage >= REN_WAITING) && <Link mx="auto" variant="ghost" fontSize="sm" href={`https://ftmscan.com/tx/${bridgeTxHash[0]}`} isExternal>
                         <Stack direction="row" alignItems="center">
                             <Text>FTM Transaction</Text>
                             <BsArrowUpRight />
                         </Stack></Link>}
-                    {(bridgeStage >= REN_TX_ON_RENVM) && <Link mx="auto" variant="ghost" fontSize="sm" href={`https://explorer.renproject.io/#/tx/${bridgeTxHash[1]}`} isExternal>
+                    {(bridgeStage >= REN_WAITING) && <Link mx="auto" variant="ghost" fontSize="sm" href={`https://explorer.renproject.io/#/tx/${bridgeTxHash[1]}`} isExternal>
                         <Stack direction="row" alignItems="center">
                             <Text>RenVM Transaction</Text>
                             <BsArrowUpRight />
@@ -390,7 +294,7 @@ const BtcToElysBridge = () => {
             }
             {
                 (bridgeStage > REN_WAITING) && <Container centerContent alignItems="center" p="4" maxWidth="container.md" bg="blue" border="1px" borderColor="blackAlpha.100" roundedBottom="3xl" shadow="lg">
-                    {(bridgeStage >= REN_TX_ON_BTC) ? <Link mx="auto" variant="ghost" fontSize="sm" href={`https://live.blockcypher.com/btc/address/${btcAddress}`} isExternal>
+                    {(bridgeStage >= REN_WAITING) ? <Link mx="auto" variant="ghost" fontSize="sm" href={`https://live.blockcypher.com/btc/address/${btcAddress}`} isExternal>
                         <Stack direction="row" alignItems="center">
                             <Text color="white">View transaction on Bitcoin</Text>
                             <BsArrowUpRight color='white' />

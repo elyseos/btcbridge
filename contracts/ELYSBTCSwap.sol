@@ -17,7 +17,7 @@ interface IGatewayRegistry {
 
 contract ELYSBTCSwap {
     event ELYStoRenBTCSwap(address indexed, uint ELYSIn, uint renBTCOut);
-    event BTCToELYSSwap(address indexed, uint renBTCIn, uint ELYSOut, bytes _msg);
+    event BTCToELYSSwap(address indexed, uint renBTCIn, uint ELYSOut);
         
     IERC20 public ELYS = IERC20(0xd89cc0d2A28a769eADeF50fFf74EBC07405DB9Fc);
     IERC20 public WFTM = IERC20(0x21be370D5312f44cB42ce377BC9b8a0cEF1A4C83);
@@ -47,19 +47,17 @@ contract ELYSBTCSwap {
     }
 
     function swapBTCToELYS(
-        bytes calldata _msg,
+        address        _user,
         uint256        _amount,
         bytes32        _nHash,
         bytes calldata _sig
     ) external {
-        bytes32 pHash = keccak256(abi.encode(_msg));
+        bytes32 pHash = keccak256(abi.encode(_user));
         uint256 mintedAmount = registry.getGatewayBySymbol("BTC").mint(pHash, _amount, _nHash, _sig);
 
-        _swapRenBTCToELYS(mintedAmount, _msg);
+        _swapRenBTCToELYS(mintedAmount, _user);
     }
-    function _swapRenBTCToELYS(uint amountIn, bytes calldata _msg) internal returns(uint ELYSOut) {
-        renBTC.transferFrom(msg.sender, address(this), amountIn);
-
+    function _swapRenBTCToELYS(uint amountIn, address user) internal returns(uint ELYSOut) {
         address[] memory path = new address[](2);
         path[0] = address(renBTC);
         path[1] = address(WFTM);
@@ -71,9 +69,9 @@ contract ELYSBTCSwap {
         path[1] = address(ELYS);
         
         WFTM.approve(address(zooDexRouter), WFTMOut);
-        ELYSOut = zooDexRouter.swapExactTokensForTokens(WFTMOut, 1, path, msg.sender, block.timestamp)[1];
+        ELYSOut = zooDexRouter.swapExactTokensForTokens(WFTMOut, 1, path, user, block.timestamp)[1];
         
         console.log("ELYSOut:", ELYSOut);
-        emit BTCToELYSSwap(msg.sender, amountIn, ELYSOut, _msg);
+        emit BTCToELYSSwap(user, amountIn, ELYSOut);
     }
 }

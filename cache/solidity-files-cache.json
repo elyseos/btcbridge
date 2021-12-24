@@ -109,8 +109,8 @@
       ]
     },
     "/home/krishnendu/Bounties/btcbridge/contracts/ELYSBTCSwap.sol": {
-      "lastModificationDate": 1640345903337,
-      "contentHash": "3aa68c2ccd47f9d8364360d8f8c45560",
+      "lastModificationDate": 1640357195290,
+      "contentHash": "3a59c2f5499f3321d74f148c84692922",
       "sourceName": "contracts/ELYSBTCSwap.sol",
       "solcConfig": {
         "version": "0.8.6",
