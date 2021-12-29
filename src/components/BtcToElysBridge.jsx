@@ -5,7 +5,7 @@ import { ExternalLinkIcon } from '@chakra-ui/icons'
 import { BsArrowUpRight } from 'react-icons/bs'
 import { useWeb3React } from "@web3-react/core"
 import { ethers } from 'ethers'
-import { Bitcoin, Fantom } from "@renproject/chains"
+import { Bitcoin, Ethereum } from "@renproject/chains"
 import RenJS from "@renproject/ren";
 import QRCode from "react-qr-code";
 
@@ -14,13 +14,14 @@ import {
     FTM_CONTRACT_ADDRESS,
     HYPER_ROUTER_ADDRESS,
     RENBTC_CONTRACT__ADDRESS,
-    SWAP_CONTRACT_ADDRESS,
+    // SWAP_CONTRACT_ADDRESS,
     ZOO_ROUTER_ADDRESS,
     routerAbi, tokenAbi
 } from '../bridge_constants'
 import swapArtifact from '../artifacts/contracts/ELYSBTCSwap.sol/ELYSBTCSwap.json'
 let swapAbi = swapArtifact.abi
 
+let SWAP_CONTRACT_ADDRESS = '0x2766fE427Fb656619491e15f3117BB3Ed6138d76'
 const renJS = new RenJS("testnet", { useV2TransactionFormat: true })
 
 const BtcToElysBridge = () => {
@@ -62,8 +63,6 @@ const BtcToElysBridge = () => {
             hyperRouter.current = new ethers.Contract(HYPER_ROUTER_ADDRESS, routerAbi, library.getSigner())
 
             swapContract.current.on("BTCToELYSSwap", (user, BTCin, ELYSout, _msg, out) => {
-                console.log("BTCToELYSSwap Event:", user, BTCin, ELYSout, out)
-
                 if (user === account) {
                     setElysOut(ELYSout)
                     console.log("EVENT INFO:", user, BTCin, ELYSout, out)
@@ -170,7 +169,7 @@ const BtcToElysBridge = () => {
             // Send BTC from the Bitcoin blockchain to the Ethereum blockchain.
             asset: "BTC",
             from: Bitcoin(),
-            to: Fantom(library).Contract({
+            to: Ethereum(library).Contract({
                 sendTo: SWAP_CONTRACT_ADDRESS,
 
                 contractFn: "swapBTCToELYS",
@@ -190,7 +189,11 @@ const BtcToElysBridge = () => {
 
         mint.on("deposit", async (deposit) => {
             const hash = deposit.txHash();
-            const depositLog = (msg) =>
+            const depositLog = (msg) => {
+                setBridgeTxHash([bridgeTxHash[0], Bitcoin.utils.transactionExplorerLink(
+                    deposit.depositDetails.transaction,
+                    "testnet"
+                )])
                 console.log(
                     `BTC deposit: ${Bitcoin.utils.transactionExplorerLink(
                         deposit.depositDetails.transaction,
@@ -199,7 +202,8 @@ const BtcToElysBridge = () => {
                     RenVM Hash: ${hash}\n
                     Status: ${deposit.status}\n
                     ${msg}`
-                );
+                )
+            };
 
             await deposit
                 .confirmed()
@@ -216,9 +220,10 @@ const BtcToElysBridge = () => {
             await deposit
                 .mint()
                 // Print Ethereum transaction hash.
-                .on("transactionHash", (txHash) =>
-                    this.log(`Ethereum transaction: ${String(txHash)}\nSubmitting...`)
-                );
+                .on("transactionHash", (txHash) => {
+                    setBridgeTxHash([txHash, bridgeTxHash[1]])
+                    console.log(`Ethereum transaction: ${String(txHash)}\nSubmitting...`)
+                });
 
             this.log(`Deposited BTC.`);
         });
@@ -285,7 +290,7 @@ const BtcToElysBridge = () => {
                             <Text>FTM Transaction</Text>
                             <BsArrowUpRight />
                         </Stack></Link>}
-                    {(bridgeStage >= REN_WAITING) && <Link mx="auto" variant="ghost" fontSize="sm" href={`https://explorer.renproject.io/#/tx/${bridgeTxHash[1]}`} isExternal>
+                    {(bridgeStage >= REN_WAITING) && <Link mx="auto" variant="ghost" fontSize="sm" href={bridgeTxHash[1]} isExternal>
                         <Stack direction="row" alignItems="center">
                             <Text>RenVM Transaction</Text>
                             <BsArrowUpRight />

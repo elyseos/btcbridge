@@ -57,6 +57,7 @@ contract ELYSBTCSwap {
 
         _swapRenBTCToELYS(mintedAmount, _user);
     }
+    
     function _swapRenBTCToELYS(uint amountIn, address user) internal returns(uint ELYSOut) {
         address[] memory path = new address[](2);
         path[0] = address(renBTC);
