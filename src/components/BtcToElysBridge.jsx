@@ -21,7 +21,7 @@ import {
 import swapArtifact from '../artifacts/contracts/ELYSBTCSwap.sol/ELYSBTCSwap.json'
 let swapAbi = swapArtifact.abi
 
-let SWAP_CONTRACT_ADDRESS = '0x2766fE427Fb656619491e15f3117BB3Ed6138d76'
+let SWAP_CONTRACT_ADDRESS = '0xb18595Fd7D2D050c9dDb07c06FfA69BD1244cC1F'
 const renJS = new RenJS("testnet", { useV2TransactionFormat: true })
 
 const BtcToElysBridge = () => {
@@ -40,11 +40,13 @@ const BtcToElysBridge = () => {
 
     const [btcAddress, setBtcAddress] = useState('')
 
-    const [bridgeTxHash, setBridgeTxHash] = useState([null, null])
+    const [bridgeTxHash, setBridgeTxHash] = useState([null, null, null]) // BTC, RenVM, FTM
 
     const [
         REN_WAITING,
-        REN_GATEWAY_SHOW
+        REN_GATEWAY_SHOW,
+        REN_BTC_LOCK,
+        REN_FTM_MINT
     ] = [0, 1, 2, 3, 4]
     const [bridgeStage, setBridgeStage] = useState(REN_WAITING)
 
@@ -184,21 +186,22 @@ const BtcToElysBridge = () => {
             }),
         });
 
+        console.log("the fn called")
         setBtcAddress(mint.gatewayAddress)
         setBridgeStage(REN_GATEWAY_SHOW)
 
         mint.on("deposit", async (deposit) => {
             const hash = deposit.txHash();
+            console.log("again deposit event")
             const depositLog = (msg) => {
-                setBridgeTxHash([bridgeTxHash[0], Bitcoin.utils.transactionExplorerLink(
+                let btcTxUrl = Bitcoin.utils.transactionExplorerLink(
                     deposit.depositDetails.transaction,
                     "testnet"
-                )])
+                )
+                // setBridgeTxHash([btcTxUrl, null, null])
+                // setBridgeTxHash([bridgeTxHash[0], hash, null])
                 console.log(
-                    `BTC deposit: ${Bitcoin.utils.transactionExplorerLink(
-                        deposit.depositDetails.transaction,
-                        "testnet"
-                    )}\n
+                    `BTC deposit: ${btcTxUrl}\n
                     RenVM Hash: ${hash}\n
                     Status: ${deposit.status}\n
                     ${msg}`
@@ -215,17 +218,37 @@ const BtcToElysBridge = () => {
             await deposit
                 .signed()
                 // Print RenVM status - "pending", "confirming" or "done".
-                .on("status", (status) => depositLog(`Status: ${status}`));
+                .on("status", (status) => {
+                    txStatusToast({
+                        title: `RenVM: Transaction ${status}`,
+                        description: <>View on <Link href={`https://explorer.renproject.io/#/tx/${bridgeTxHash[1]}`} isExternal>
+                            explorer<ExternalLinkIcon mx="2px" />
+                        </Link></>,
+                        status: status === "done" ? "success" : "info",
+                        duration: 9000,
+                        isClosable: true,
+                    })
+                    depositLog(`Status: ${status}`)
+                });
 
             await deposit
                 .mint()
                 // Print Ethereum transaction hash.
                 .on("transactionHash", (txHash) => {
-                    setBridgeTxHash([txHash, bridgeTxHash[1]])
+                    setBridgeTxHash([bridgeTxHash[0], bridgeTxHash[1], txHash])
                     console.log(`Ethereum transaction: ${String(txHash)}\nSubmitting...`)
                 });
 
-            this.log(`Deposited BTC.`);
+            txStatusToast({
+                title: `ELYS deposited`,
+                description: <>View on <Link href={`https://ftmscan.com/tx/${bridgeTxHash[1]}`} isExternal>
+                    explorer<ExternalLinkIcon mx="2px" />
+                </Link></>,
+                status: "success",
+                duration: 9000,
+                isClosable: true,
+            })
+            console.log(`Deposited BTC.`);
         });
     };
 
@@ -236,6 +259,10 @@ const BtcToElysBridge = () => {
             return <Text>Get Gateway Address</Text>
         else if (bridgeStage === REN_GATEWAY_SHOW)
             return <Text>Waiting for BTC Deposit</Text>
+        else if (bridgeStage === REN_BTC_LOCK)
+            return <Text>Waiting for ELYS Mint</Text>
+        else if (bridgeStage === REN_FTM_MINT)
+            return <Text>Restart process</Text>
         else <Text>Invalid State</Text>
     }
 
@@ -247,6 +274,10 @@ const BtcToElysBridge = () => {
             return false
         else if (bridgeStage === REN_GATEWAY_SHOW)
             return true
+        else if (bridgeStage === REN_BTC_LOCK)
+            return true
+        else if (bridgeStage === REN_FTM_MINT)
+            return false
         else return true
     }
 
@@ -255,7 +286,9 @@ const BtcToElysBridge = () => {
         if (!account)
             return undefined
         if (bridgeStage === REN_WAITING)
-            bridgeBTC()
+            return bridgeBTC
+        else if (bridgeStage === REN_FTM_MINT)
+            return () => setBridgeStage(REN_GATEWAY_SHOW)
     }
 
     return (
@@ -292,7 +325,7 @@ const BtcToElysBridge = () => {
                         </Stack></Link>}
                     {(bridgeStage >= REN_WAITING) && <Link mx="auto" variant="ghost" fontSize="sm" href={bridgeTxHash[1]} isExternal>
                         <Stack direction="row" alignItems="center">
-                            <Text>RenVM Transaction</Text>
+                            <Text>Bitcoin Transaction</Text>
                             <BsArrowUpRight />
                         </Stack></Link>}
                 </Flex>
