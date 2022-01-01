@@ -464,9 +464,9 @@ const ElysToBtcBridge = () => {
     }
 
     return (
-        <Container centerContent mt="16" minWidth="72" pb="32">
+        <Container centerContent mt="16" minWidth="72" pb="10">
             <Container centerContent alignItems="center" p="4" maxWidth="container.md" bg={containerBg} border="1px" borderColor="blackAlpha.100" roundedTop="3xl" shadow="lg">
-                <Text my="5" textAlign="left" w="full" fontSize="3xl" fontWeight="bold" color={textColor}>Bridge</Text>
+                <Text my="5" textAlign="left" w="full" fontSize="3xl" fontWeight="bold" color={textColor}>ELYS to Bitcoin</Text>
                 <Stack w="full">
                     <Stack direction="row" alignItems="center" border="1px" borderColor={bordersColor} rounded="md" p="2">
                         {/* <Stack centerContent alignItems="center" bg="white" border="1px" borderColor="gray.200" h="full" w="32" py="2" px="3" rounded="md" direction="row"> */}

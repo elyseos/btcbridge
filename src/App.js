@@ -11,7 +11,7 @@ function App() {
   return (
     <div className="App" style={{ height: "", backgroundColor: "burlywood" }}>
       <Navbar />
-      {/* <ElysToBtcBridge /> */}
+      <ElysToBtcBridge />
       <BtcToElysBridge />
       <Square onClick={toggleColorMode} position="fixed" bottom="5" right="5">{colorMode === 'light' ? <BiSun size="30px" /> : <BiMoon size="30px" />}</Square>
     </div >
