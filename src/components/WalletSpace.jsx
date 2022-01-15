@@ -27,9 +27,9 @@ const WalletSpace = () => {
     }
 
     return (
-        <Stack direction="row" alignItems="center">
+        <Stack direction="row" alignItems="center" >
             {error instanceof UnsupportedChainIdError &&
-                <Stack direction="row" alignItems="center" bg="red" rounded="lg" py="1" px="3" >
+                <Stack direction="row" alignItems="center" bg="#b20000" rounded="lg" py="1" px="3" >
                     <IconContext.Provider value={{ color: 'white' }}>
                         <AiOutlineWarning />
                     </IconContext.Provider>
@@ -39,18 +39,18 @@ const WalletSpace = () => {
                 <AiOutlineWarning />
             </IconContext.Provider>} */}
             {error instanceof UnsupportedChainIdError ||
-                <Button colorScheme=
-                    {active ? "gray" :
-                        "purple"} onClick={active ? () => { navigator.clipboard.writeText(account) } : connect}>
-                    <Stack alignItems="center" direction="row" >
+                <Button backgroundColor=
+                    {active ? "#241d15" :
+                        "white"} onClick={active ? () => { navigator.clipboard.writeText(account) } : connect}>
+                    <Stack alignItems="center" direction="row" color="#ed6f1b">
                         {active ? <Jazzicon diameter={20} seed={jsNumberForAddress(account)} /> : <BiWallet />}
-                        <Box><Text isTruncated maxWidth={{ sm: "28", base: "10" }}>{active ? account : 'Connect'}</Text></Box>
+                        <Box><Text isTruncated maxWidth={{ sm: "28", base: "10" }} >{active ? account : 'Connect'}</Text></Box>
                         {active && <BiCopy />}
                     </Stack>
                     {active && <Box alignItems="center"></Box>}
                 </Button>
             }
-            {active && <Button colorScheme="red" alignItems=" center" onClick={disconnect}><AiOutlineDisconnect /></Button>}
+            {active && <Button bg="#b20000" alignItems=" center" onClick={disconnect} color="white"><AiOutlineDisconnect /></Button>}
         </Stack >
     )
 }

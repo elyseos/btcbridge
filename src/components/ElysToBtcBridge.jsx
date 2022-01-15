@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react'
 import { Box, Container, Link, Stack } from "@chakra-ui/layout"
-import { Text, Button, ButtonGroup, Input, Image, Spinner, Flex, useToast, useColorModeValue } from '@chakra-ui/react'
+import { Text, Button, ButtonGroup, Input, Image, Spinner, Flex, useToast, Divider } from '@chakra-ui/react'
 import { ExternalLinkIcon } from '@chakra-ui/icons'
 import { BsArrowUpRight } from 'react-icons/bs'
 import { useWeb3React } from "@web3-react/core"
@@ -20,15 +20,14 @@ import {
 import swapArtifact from '../artifacts/contracts/ELYSBTCSwap.sol/ELYSBTCSwap.json'
 let swapAbi = swapArtifact.abi
 
+const TEXT_COLOR = 'white'
+
 const renJS = new RenJS("mainnet", { useV2TransactionFormat: true })
 
 const ElysToBtcBridge = () => {
     const { account, library } = useWeb3React()
     const [estimatedBtcOut, setEstimateBtcOut] = useState(0)
 
-    const containerBg = useColorModeValue("white", "gray.700")
-    const bordersColor = useColorModeValue("gray.300", "gray.600")
-    const textColor = useColorModeValue(!account ? "gray.400" : "black", "white")
     const zooRouter = useRef(null)
     const hyperRouter = useRef(null)
     const elysContract = useRef(null)
@@ -198,9 +197,14 @@ const ElysToBtcBridge = () => {
 
     // SETS ELYS AMOUNT AS PERCENTAGE OF WALLET BALANCE
     const setElysInFromPercent = (percent) => {
-        let balance = elysBalance.current * (percent / 100)
-        balance = balance.toFixed(5)
-        setElysIn(String(balance))
+        elysContract.current.balanceOf(account).then((balance) => {
+            elysBalance.current = ethers.utils.formatUnits(balance, 5)
+            console.log("ELYS Balance:", elysBalance.current)
+
+            let showBalance = elysBalance.current * (percent / 100)
+            showBalance = showBalance.toFixed(5)
+            setElysIn(String(showBalance))
+        })
     }
 
     // CHECKS WHETHER GIVEN BTC-MAINNET ADDRESS IS VALID
@@ -464,37 +468,37 @@ const ElysToBtcBridge = () => {
     }
 
     return (
-        <Container centerContent mt="16" minWidth="72" pb="10">
-            <Container centerContent alignItems="center" p="4" maxWidth="container.md" bg={containerBg} border="1px" borderColor="blackAlpha.100" roundedTop="3xl" shadow="lg">
-                <Text my="5" textAlign="left" w="full" fontSize="3xl" fontWeight="bold" color={textColor}>ELYS to Bitcoin</Text>
+        <Container centerContent mt="16" minWidth="72">
+            <Container centerContent alignItems="center" p="4" pt="0" maxWidth="container.md" border={"2px"} borderColor={"#ec7019"} rounded="3xl" shadow="lg">
+                <Text my="5" textAlign="left" w="full" fontSize="xl" fontWeight="medium" color={"#ed6f1b"}>ELYS to BTC</Text>
                 <Stack w="full">
-                    <Stack direction="row" alignItems="center" border="1px" borderColor={bordersColor} rounded="md" p="2">
+                    <Stack direction="row" alignItems="center" p="2">
                         {/* <Stack centerContent alignItems="center" bg="white" border="1px" borderColor="gray.200" h="full" w="32" py="2" px="3" rounded="md" direction="row"> */}
                         <Image borderRadius="full" src="https://gitcoin.co/dynamic/avatar/elyseos" bg="white" boxSize="30px" />
                         {/* <Text fontWeight="bold">ELYS</Text> */}
                         {/* </Stack> */}
-                        <Input value={elysIn} isTruncated type="number" placeholder="0" textAlign="right" fontWeight="bold" fontSize="xl" onChange={e => setElysIn(e.target.value)} onKeyDown={e => preventIllegalAmount(e)} color={textColor} />
+                        <Input value={elysIn} isTruncated type="number" placeholder="0" textAlign="right" fontWeight="bold" fontSize="xl" onChange={e => setElysIn(e.target.value)} onKeyDown={e => preventIllegalAmount(e)} color={'black'} bg="#facbac" border={"2px"} borderColor={"#ec7019"} rounded={'full'} />
                     </Stack>
-                    <ButtonGroup isAttached variant="outline" w="full">
-                        <Button w="full" mr="-px" disabled={!account} onClick={() => setElysInFromPercent(25)}>25%</Button>
-                        <Button w="full" mr="-px" disabled={!account} onClick={() => setElysInFromPercent(50)}>50%</Button>
-                        <Button w="full" mr="-px" disabled={!account} onClick={() => setElysInFromPercent(75)}>75%</Button>
-                        <Button w="full" mr="-px" disabled={!account} onClick={() => setElysInFromPercent(100)}>100%</Button>
+                    <ButtonGroup isAttached variant="link" w="full" >
+                        <Button w="full" mr="-px" disabled={!account} onClick={() => setElysInFromPercent(25)} color="#ec7019">25%</Button>
+                        <Button w="full" mr="-px" disabled={!account} onClick={() => setElysInFromPercent(50)} color="#ec7019">50%</Button>
+                        <Button w="full" mr="-px" disabled={!account} onClick={() => setElysInFromPercent(75)} color="#ec7019">75%</Button>
+                        <Button w="full" mr="-px" disabled={!account} onClick={() => setElysInFromPercent(100)} color="#ec7019">100%</Button>
                     </ButtonGroup>
                 </Stack>
-                <Text w="fit-content" my="2" color={textColor}>{`≈ ${estimatedBtcOut} BTC`}</Text>
+                <Text w="fit-content" my="2" color={TEXT_COLOR}>{`≈ ${estimatedBtcOut} BTC`}</Text>
 
                 {Number(renIn) ?
-                    <Text w="fit-content" mt="2" color={textColor}>
+                    <Text w="fit-content" mt="2" color={TEXT_COLOR}>
                         {Number(ethers.utils.formatUnits(renIn, 8)).toFixed(8)} <b>renBTC</b> to transfer.
                     </Text>
                     : <></>
                 }
-            </Container>
 
-            <Container centerContent alignItems="center" p="4" mt="0.5" maxWidth="container.md" bg={containerBg} border="1px" borderColor="blackAlpha.100" roundedBottom="3xl" shadow="lg">
+                <Divider my={"20px"} w="40%" border={"2px"} />
+
                 <Box w="full" mb="6">
-                    <Text mb="1" color={!account ? "blue.400" : "blue"}>Bridge tokens to: </Text>
+                    <Text mb="2" color="#ec7019">Bridge tokens to: </Text>
                     <Input
                         isTruncated
                         isInvalid={!addressValidity && btcAddress.length !== 0}
@@ -505,19 +509,19 @@ const ElysToBtcBridge = () => {
                             setBtcAddress(e.target.value)
                             setAddressValidity(validateBitcoinAddress(e.target.value))
                         }}
-                        color={textColor}
+                        color={'black'} bg="#facbac" border={"2px"} borderColor={"#ec7019"} rounded={'full'}
                     />
                 </Box>
 
                 {/* <Stack w="full"> */}
-                <Button size="lg" colorScheme="purple" bgGradient="linear(to-r, purple.400, pink.400)" _hover={{
-                    bgGradient: "linear(to-r, purple.500, pink.500)",
-                }} w="full" rounded="xl" disabled={getActionButtonDisabled()} onClick={getActionButtonOnClick()}>
+                <Button size="lg" bg="#ec7019" _hover={{
+                    bg: "#ba5715",
+                }} _active={{ bg: "#6d330c" }} w="full" rounded="xl" disabled={getActionButtonDisabled()} onClick={getActionButtonOnClick()}>
                     {getActionButtonState()}
                 </Button>
             </Container>
             {
-                (bridgeStage > REN_WAITING) && <Flex justify="space-between" mt="2" w="full" alignItems="center" p="4" maxWidth="container.md" bg={containerBg} border="1px" borderColor="blackAlpha.100" roundedTop="3xl" shadow="lg">
+                (bridgeStage > REN_WAITING) && <Flex justify="space-between" m="1" mt="2" w="full" alignItems="center" p="4" maxWidth="container.md" border="1px" rounded="3xl" shadow="lg">
                     {(bridgeStage >= REN_TX_ON_FTM) && <Link mx="auto" variant="ghost" fontSize="sm" href={`https://ftmscan.com/tx/${bridgeTxHash[0]}`} isExternal>
                         <Stack direction="row" alignItems="center">
                             <Text>FTM Transaction</Text>
@@ -531,7 +535,7 @@ const ElysToBtcBridge = () => {
                 </Flex>
             }
             {
-                (bridgeStage > REN_WAITING) && <Container centerContent alignItems="center" p="4" maxWidth="container.md" bg="blue" border="1px" borderColor="blackAlpha.100" roundedBottom="3xl" shadow="lg">
+                (bridgeStage > REN_WAITING) && <Container centerContent alignItems="center" p="4" maxWidth="container.md" bg="#6d330c" border="1px" borderColor="blackAlpha.100" rounded="3xl" shadow="lg" m="1">
                     {(bridgeStage >= REN_TX_ON_BTC) ? <Link mx="auto" variant="ghost" fontSize="sm" href={`https://live.blockcypher.com/btc/address/${btcAddress}`} isExternal>
                         <Stack direction="row" alignItems="center">
                             <Text color="white">View transaction on Bitcoin</Text>

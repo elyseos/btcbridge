@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react'
 import { Box, Container, Link, Stack } from "@chakra-ui/layout"
-import { Text, Button, Input, Image, Spinner, Flex, useToast, useColorModeValue } from '@chakra-ui/react'
+import { Text, Button, Input, Image, Spinner, Flex, useToast, Divider } from '@chakra-ui/react'
 import { ExternalLinkIcon } from '@chakra-ui/icons'
 import { BsArrowUpRight } from 'react-icons/bs'
 import { useWeb3React } from "@web3-react/core"
@@ -8,7 +8,6 @@ import { ethers } from 'ethers'
 import { Bitcoin, Fantom } from "@renproject/chains"
 import RenJS from "@renproject/ren";
 import QRCode from "react-qr-code";
-
 import {
     ELYS_CONTRACT_ADDRESS,
     FTM_CONTRACT_ADDRESS,
@@ -19,6 +18,9 @@ import {
     routerAbi, tokenAbi
 } from '../bridge_constants'
 import swapArtifact from '../artifacts/contracts/ELYSBTCSwap.sol/ELYSBTCSwap.json'
+
+const TEXT_COLOR = 'white'
+
 let swapAbi = swapArtifact.abi
 
 // let SWAP_CONTRACT_ADDRESS = '0xb18595Fd7D2D050c9dDb07c06FfA69BD1244cC1F'
@@ -28,9 +30,6 @@ const BtcToElysBridge = () => {
     const { account, library } = useWeb3React()
     const [estimatedElysOut, setEstimateElysOut] = useState(0)
 
-    const containerBg = useColorModeValue("white", "gray.700")
-    const bordersColor = useColorModeValue("gray.300", "gray.600")
-    const textColor = useColorModeValue(!account ? "gray.400" : "black", "white")
     const zooRouter = useRef(null)
     const hyperRouter = useRef(null)
     const elysContract = useRef(null)
@@ -195,19 +194,6 @@ const BtcToElysBridge = () => {
         setBridgeStage(REN_GATEWAY_SHOW)
 
         mint.on("deposit", async (deposit) => {
-            // const hash = deposit.txHash();
-            // const depositLog = (msg) => {
-
-            //     console.log(deposit.status)
-
-
-            //     console.log(
-            //         `BTC deposit: ${btcTxUrl}\n
-            //         RenVM Hash: ${hash}\n
-            //         Status: ${deposit.status}\n
-            //         ${msg}`
-            //     )
-            // };
 
             const updateStatus = () => {
                 console.log("deposit.status", deposit.status)
@@ -305,32 +291,32 @@ const BtcToElysBridge = () => {
     }
 
     return (
-        <Container centerContent mt="16" minWidth="72" pb="32">
-            <Container centerContent alignItems="center" p="4" maxWidth="container.md" bg={containerBg} border="1px" borderColor="blackAlpha.100" roundedTop="3xl" shadow="lg">
-                <Text my="5" textAlign="left" w="full" fontSize="3xl" fontWeight="bold" color={textColor}>Bitcoin to ELYS</Text>
+        <Container centerContent mt="16" minWidth="72" pb="10">
+            <Container centerContent alignItems="center" p="4" pt="0" maxWidth="container.md" border={"2px"} borderColor={"#ec7019"} rounded="3xl" shadow="lg">
+                <Text my="5" textAlign="left" w="full" fontSize="xl" fontWeight="medium" color={"#ed6f1b"}>BTC to ELYS</Text>
                 <Stack w="full">
-                    <Stack direction="row" alignItems="center" border="1px" borderColor={bordersColor} rounded="md" p="2">
+                    <Stack direction="row" alignItems="center" p="2">
                         <Image borderRadius="full" src="https://gitcoin.co/dynamic/avatar/elyseos" bg="white" boxSize="30px" />
-                        <Input value={btcIn} isTruncated type="number" placeholder="0" textAlign="right" fontWeight="bold" fontSize="xl" onChange={e => setBtcIn(e.target.value)} onKeyDown={e => preventIllegalAmount(e)} color={textColor} />
+                        <Input value={btcIn} isTruncated type="number" placeholder="0" textAlign="right" fontWeight="medium" fontSize="xl" onChange={e => setBtcIn(e.target.value)} onKeyDown={e => preventIllegalAmount(e)} color={'black'} bg="#facbac" border={"2px"} borderColor={"#ec7019"} rounded={'full'} />
                     </Stack>
                 </Stack>
-                <Text w="fit-content" my="2" color={textColor}>{`≈ ${estimatedElysOut} ELYS`}</Text>
-            </Container>
+                <Text w="fit-content" mt="2" color={TEXT_COLOR}>{`≈ ${estimatedElysOut} ELYS`}</Text>
 
-            <Container centerContent alignItems="center" p="4" mt="0.5" maxWidth="container.md" bg={containerBg} border="1px" borderColor="blackAlpha.100" roundedBottom="3xl" shadow="lg">
+                <Divider my={"20px"} w="40%" border={"2px"} />
+
                 {btcAddress && <>
                     <Text fontWeight={'bold'}>Deposit BTC at:</Text>
                     <Text backgroundColor={'beige'} py="0.5" px="1.5" rounded={'lg'}>{btcAddress}</Text>
                     <Box pb="10" pt="3"><QRCode value={btcAddress} /></Box>
                 </>}
-                <Button size="lg" colorScheme="purple" bgGradient="linear(to-r, purple.400, pink.400)" _hover={{
-                    bgGradient: "linear(to-r, purple.500, pink.500)",
-                }} w="full" rounded="xl" disabled={getActionButtonDisabled()} onClick={getActionButtonOnClick()}>
+                <Button size="lg" bg="#ec7019" _hover={{
+                    bg: "#ba5715",
+                }} _active={{ bg: "#6d330c" }} w="full" rounded="xl" disabled={getActionButtonDisabled()} onClick={getActionButtonOnClick()}>
                     {getActionButtonState()}
                 </Button>
             </Container>
             {
-                (bridgeStage > REN_GATEWAY_SHOW) && <Flex justify="space-between" mt="2" w="full" alignItems="center" p="4" maxWidth="container.md" bg={containerBg} border="1px" borderColor="blackAlpha.100" rounded="3xl" shadow="lg">
+                (bridgeStage > REN_GATEWAY_SHOW) && <Flex justify="space-between" mt="2" w="full" alignItems="center" p="4" maxWidth="container.md" rounded="3xl" shadow="lg">
                     {(bridgeStage >= REN_DEPOSIT_DETECTED) && <Link mx="auto" variant="ghost" fontSize="sm" href={bridgeTxLinks[0]} isExternal>
                         <Stack direction="row" alignItems="center">
                             <Text>Bitcoin Transaction</Text>
