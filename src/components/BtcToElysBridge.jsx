@@ -1,13 +1,15 @@
 import { useRef, useState, useEffect } from 'react'
 import { Box, Container, Link, Stack } from "@chakra-ui/layout"
-import { Text, Button, Input, Image, Spinner, Flex, useToast, Divider } from '@chakra-ui/react'
+import { Text, Button, Input, Checkbox, Spinner, Flex, useToast, Divider } from '@chakra-ui/react'
 import { ExternalLinkIcon } from '@chakra-ui/icons'
 import { BsArrowUpRight } from 'react-icons/bs'
 import { useWeb3React } from "@web3-react/core"
-import { ethers } from 'ethers'
+import { ethers, providers } from 'ethers'
 import { Bitcoin, Fantom } from "@renproject/chains"
 import RenJS from "@renproject/ren";
 import QRCode from "react-qr-code";
+import { ReactComponent as ElyseosLogo } from '../elyseos_logo.svg'
+import { ReactComponent as BTCLogo } from '../BTC_Logo.svg'
 import {
     ELYS_CONTRACT_ADDRESS,
     FTM_CONTRACT_ADDRESS,
@@ -15,6 +17,7 @@ import {
     RENBTC_CONTRACT__ADDRESS,
     SWAP_CONTRACT_ADDRESS,
     ZOO_ROUTER_ADDRESS,
+    REN_BURN_GASLIMIT,
     routerAbi, tokenAbi
 } from '../bridge_constants'
 import swapArtifact from '../artifacts/contracts/ELYSBTCSwap.sol/ELYSBTCSwap.json'
@@ -55,7 +58,9 @@ const BtcToElysBridge = () => {
     const txStatusToast = useToast()
     const [txReceipt, setTxReceipt] = useState(null)
     const [elysOut, setElysOut] = useState(null)
-
+    const [isChecked, setIsChecked] = useState(false)
+    const [ftmFee, setFtmFee] = useState("0.0")
+    const [renFee, setRenFee] = useState({ lock: 0, release: 0, mint: 0, burn: 0 })
     // ----------------------------------USE-EFFECTs----------------------------------
     // FOR INITIALIZING VALUES ON STATE CHANGE
     useEffect(() => {
@@ -72,6 +77,32 @@ const BtcToElysBridge = () => {
                     console.log("EVENT INFO:", user, BTCin, ELYSout, out)
                 }
             });
+
+            library.getGasPrice().then(price => {
+                setFtmFee(Number(ethers.utils.formatEther(price.mul(REN_BURN_GASLIMIT))).toFixed(3))
+            })
+
+            renJS.getFees({
+                asset: "BTC",
+                from: Bitcoin(),
+                to: Fantom(library).Contract({
+                    sendTo: SWAP_CONTRACT_ADDRESS,
+
+                    contractFn: "swapBTCToELYS",
+
+                    contractParams: [
+                        {
+                            name: "_user",
+                            type: "address",
+                            value: account,
+                        },
+                    ],
+                }),
+            }).then(res => {
+                res.lock = ethers.utils.formatUnits(res.lock.toString(), 8)
+                setRenFee(res)
+                console.log(res)
+            })
 
             setBridgeStage(REN_WAITING)
         }
@@ -100,13 +131,18 @@ const BtcToElysBridge = () => {
             if (btcInputValue === 0) { // Protect from Uniswap Insufficient Amount error
                 setEstimateElysOut('0')
                 return
-            } else btcInputValue = String(btcIn)
+            } else btcInputValue = ethers.utils.parseUnits(String(btcIn), 8)
 
             if (account == null) {
                 return
             }
+            btcInputValue = btcInputValue.sub(
+                btcInputValue.mul(renFee.burn + renFee.mint).div(10000)
+            ).sub(ethers.utils.parseUnits(renFee.lock, 8))
+            console.log(ethers.utils.formatUnits(btcInputValue, 8))
+            let ftmOut = (await hyperRouter.current.getAmountsOut(btcInputValue, [RENBTC_CONTRACT__ADDRESS, FTM_CONTRACT_ADDRESS]))[1]
 
-            let ftmOut = (await hyperRouter.current.getAmountsOut(ethers.utils.parseUnits(btcInputValue, 8), [RENBTC_CONTRACT__ADDRESS, FTM_CONTRACT_ADDRESS]))[1]
+            console.log(ethers.utils.formatUnits(ftmOut, 18))
             let elysOut = (await zooRouter.current.getAmountsOut(ftmOut, [FTM_CONTRACT_ADDRESS, ELYS_CONTRACT_ADDRESS]))[1]
             setEstimateElysOut(ethers.utils.formatUnits(elysOut, 5))
         }
@@ -275,7 +311,7 @@ const BtcToElysBridge = () => {
 
     // ENABLES/DISABLES ACTION BUTTON BASED ON TRANSACTION-STATE
     const getActionButtonDisabled = () => {
-        if (!account)
+        if (!account || !isChecked)
             return true
         if (bridgeStage === REN_WAITING)
             return false
@@ -294,20 +330,60 @@ const BtcToElysBridge = () => {
         <Container centerContent mt="16" minWidth="72" pb="10">
             <Container centerContent alignItems="center" p="4" pt="0" maxWidth="container.md" border={"2px"} borderColor={"#ec7019"} rounded="3xl" shadow="lg">
                 <Text my="5" textAlign="left" w="full" fontSize="xl" fontWeight="medium" color={"#ed6f1b"}>BTC to ELYS</Text>
-                <Stack w="full">
-                    <Stack direction="row" alignItems="center" p="2">
-                        <Image borderRadius="full" src="https://gitcoin.co/dynamic/avatar/elyseos" bg="white" boxSize="30px" />
-                        <Input value={btcIn} isTruncated type="number" placeholder="0" textAlign="right" fontWeight="medium" fontSize="xl" onChange={e => setBtcIn(e.target.value)} onKeyDown={e => preventIllegalAmount(e)} color={'black'} bg="#facbac" border={"2px"} borderColor={"#ec7019"} rounded={'full'} />
+                <Container px="8">
+                    <Stack spacing="5" w="full" direction="row" alignItems="center" p="2">
+                        <BTCLogo style={{ height: 52, width: 52 }} />
+                        <Text textAlign={"center"} flexGrow="2" color={"#ed6f1b"}>Fee Calculator</Text>
+                        <Input value={btcIn} isTruncated type="number" placeholder="0" textAlign="right" fontWeight="medium" fontSize="xl" onChange={e => setBtcIn(e.target.value)} onKeyDown={e => preventIllegalAmount(e)} color={'black'} bg="#facbac" border={"2px"} borderColor={"#ec7019"} rounded={'full'} _placeholder={{ color: '#c6a188' }} w="40" />
                     </Stack>
-                </Stack>
-                <Text w="fit-content" mt="2" color={TEXT_COLOR}>{`≈ ${estimatedElysOut} ELYS`}</Text>
+                    {library && <>
+                        <Divider mt={"20px"} mb={"5px"} border={"2px"} mx="auto" bg={"#ed6f1b"} />
+                        <Text textAlign={"left"} flexGrow="2" color={"#ed6f1b"}>Details:</Text>
+                        <Container>
+                            <Stack direction={"row"} justifyContent={"space-between"}>
+                                <Text>Sending:</Text>
+                                <Text>{btcIn ? btcIn : "0.0"} BTC</Text>
+                            </Stack>
+                            <Stack direction={"row"} justifyContent={"space-between"}>
+                                <Text>To:</Text>
+                                <Text>ELYS on Fantom</Text>
+                            </Stack>
+                            <Stack direction={"row"} justifyContent={"space-between"}>
+                                <Text>Recipient Address:</Text>
+                                <Text isTruncated maxWidth={"30%"}>{account}</Text>
+                            </Stack>
+                        </Container>
+                        <Divider mt={"20px"} mb={"5px"} border={"2px"} mx="auto" bg={"#ed6f1b"} />
+                        <Text textAlign={"left"} flexGrow="2" color={"#ed6f1b"}>Fees:</Text>
+                        <Container>
+                            <Stack direction={"row"} justifyContent={"space-between"}>
+                                <Text>RenVM Fee:</Text>
+                                <Text>0.{renFee.burn + renFee.mint}%</Text>
+                            </Stack>
+                            <Stack direction={"row"} justifyContent={"space-between"}>
+                                <Text>Bitcoin Miner Fee:</Text>
+                                <Text>{renFee.lock} BTC</Text>
+                            </Stack>
+                            <Stack direction={"row"} justifyContent={"space-between"}>
+                                <Text>Est FTM Fee Fee:</Text>
+                                <Text>{ftmFee} FTM</Text>
+                            </Stack>
+                        </Container></>}
 
+                </Container>
+                <Stack direction='row' alignItems="center" w="full" mb="2" mt="20px" border={"2px"} rounded={"2xl"} borderColor={"#ed6f1b"} py="3" px="5" justifyContent={"space-between"}>
+                    <Text color={TEXT_COLOR} >Receiving</Text>
+                    <ElyseosLogo style={{ height: 50 }} />
+                    <Text fontWeight={"bold"} fontSize={'lg'} color={TEXT_COLOR} >{`≈ ${estimatedElysOut} ELYS`}</Text>
+                </Stack>
+
+                <Checkbox colorScheme='orange' spacing={"3"} my="5" mx="3" w="full" onChange={e => setIsChecked(e.target.checked)}>I acknowledge the fees and that this transaction requires FTM</Checkbox>
                 <Divider my={"20px"} w="40%" border={"2px"} />
 
                 {btcAddress && <>
-                    <Text fontWeight={'bold'}>Deposit BTC at:</Text>
-                    <Text backgroundColor={'beige'} py="0.5" px="1.5" rounded={'lg'}>{btcAddress}</Text>
-                    <Box pb="10" pt="3"><QRCode value={btcAddress} /></Box>
+                    <Text fontWeight={'bold'} mb="1">Deposit BTC at:</Text>
+                    <Text backgroundColor={'#6d330c'} py="0.5" px="1.5" rounded={'lg'}>{btcAddress}</Text>
+                    <Box pb="10" pt="5"><QRCode value={btcAddress} bgColor='#231b17' fgColor='#facbac' /></Box>
                 </>}
                 <Button size="lg" bg="#ec7019" _hover={{
                     bg: "#ba5715",
@@ -316,11 +392,11 @@ const BtcToElysBridge = () => {
                 </Button>
             </Container>
             {
-                (bridgeStage > REN_GATEWAY_SHOW) && <Flex justify="space-between" mt="2" w="full" alignItems="center" p="4" maxWidth="container.md" rounded="3xl" shadow="lg">
+                (bridgeStage > REN_GATEWAY_SHOW) && <Flex justify="space-between" mt="2" w="full" alignItems="center" p="4" maxWidth="container.md" rounded="3xl" shadow="lg" border="2px" borderColor={"#ed6f1b"}>
                     {(bridgeStage >= REN_DEPOSIT_DETECTED) && <Link mx="auto" variant="ghost" fontSize="sm" href={bridgeTxLinks[0]} isExternal>
                         <Stack direction="row" alignItems="center">
-                            <Text>Bitcoin Transaction</Text>
-                            <BsArrowUpRight />
+                            <Text color="#ed6f1b" fontSize={"md"}>Bitcoin Transaction</Text>
+                            <BsArrowUpRight color="#ed6f1b" />
                         </Stack></Link>}
                     {((bridgeStage === REN_WAITING) && (bridgeCompleted)) && <Link mx="auto" variant="ghost" fontSize="sm" href={bridgeTxLinks[1]} isExternal>
                         <Stack direction="row" alignItems="center">

@@ -6,7 +6,7 @@ import reportWebVitals from './reportWebVitals';
 
 import { Web3ReactProvider } from '@web3-react/core'
 import { ethers } from 'ethers'
-import { ChakraProvider, useColorModeValue } from '@chakra-ui/react'
+import { ChakraProvider, ColorModeScript } from '@chakra-ui/react'
 import theme from './theme'
 
 function getLibrary(provider) {
@@ -17,6 +17,7 @@ ReactDOM.render(
   <React.StrictMode>
     <Web3ReactProvider getLibrary={getLibrary}>
       <ChakraProvider theme={theme}>
+        <ColorModeScript initialColorMode='light' />
         <App />
       </ChakraProvider>
     </Web3ReactProvider>
