@@ -1,14 +1,58 @@
 import ElysToBtcBridge from "./components/ElysToBtcBridge"
 import BtcToElysBridge from "./components/BtcToElysBridge"
 import Navbar from "./components/Navbar"
+import SidePanel from "./components/SidePanel"
+import Footer from "./components/Footer"
+import { Box, Stack, Container, Image } from '@chakra-ui/react'
+import ElysBanner from './images/elysBanner.png'
+import { useState, useEffect } from "react"
+import { isMobile } from 'react-device-detect';
+import elysPriceGetter from './lib/elysprice'
+import { ReactComponent as HamburgerIcon } from './hamburger_icon.svg'
+
 
 function App() {
+  const [elysPrice, setElysPrice] = useState({ usd: 0, ftm: 0, loaded: false })
+  const [sideMenuHidden, setSideMenuHidden] = useState(false)
+
+  useEffect(() => {
+    const getPrice = async () => {
+      let price = await elysPriceGetter.get()
+      if (price.usd === 0 || price.ftm === 0) {
+        let tryAgain = () => {
+          return new Promise(resolve => {
+            let i = setInterval(async () => {
+              let price = await elysPriceGetter.get()
+              if (price.usd !== 0 && price.ftm !== 0) {
+                clearInterval(i)
+                resolve(price)
+              }
+            }, 1000)
+          })
+        }
+        price = await tryAgain()
+        console.log(price)
+      }
+      return price
+    }
+    getPrice().then(res => setElysPrice(res))
+    setSideMenuHidden(isMobile ? true : false)
+  }, [])
 
   return (
-    <div className="App">
-      <Navbar />
-      <ElysToBtcBridge />
-      <BtcToElysBridge />
+    <div className="App" w="100%">
+      <Stack className="App" direction={"row"} justifyContent={"start "} w="100%" spacing={"0"}>
+        <SidePanel hidden={sideMenuHidden} price={elysPrice} />
+        <Box w="100%" mx="auto">
+          <Box >
+            <Image src={ElysBanner} mx="auto" />
+            {isMobile && <HamburgerIcon onClick={() => setSideMenuHidden(!sideMenuHidden)} style={{ position: 'absolute', right: 5, top: 5, fill: '#FACBAC' }} />}
+          </Box>
+          <ElysToBtcBridge />
+          <BtcToElysBridge />
+          <Footer />
+        </Box>
+      </Stack>
     </div >
   );
 }

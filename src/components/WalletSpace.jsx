@@ -7,7 +7,7 @@ import Jazzicon, { jsNumberForAddress } from 'react-jazzicon'
 import { injected } from "./wallet/connector"
 
 
-const WalletSpace = () => {
+const WalletSpace = ({ style }) => {
     const { active, account, activate, deactivate, error } = useWeb3React()
 
     async function connect() {
@@ -27,7 +27,7 @@ const WalletSpace = () => {
     }
 
     return (
-        <Stack direction="row" alignItems="center" >
+        <Stack direction="row" alignItems="center" mx="auto" w="100%" >
             {error instanceof UnsupportedChainIdError &&
                 <Stack direction="row" alignItems="center" bg="#b20000" rounded="lg" py="1" px="3" >
                     <IconContext.Provider value={{ color: 'white' }}>
@@ -44,7 +44,7 @@ const WalletSpace = () => {
                         "white"} onClick={active ? () => { navigator.clipboard.writeText(account) } : connect}>
                     <Stack alignItems="center" direction="row" color="#ed6f1b">
                         {active ? <Jazzicon diameter={20} seed={jsNumberForAddress(account)} /> : <BiWallet />}
-                        <Box><Text isTruncated maxWidth={{ sm: "28", base: "10" }} >{active ? account : 'Connect'}</Text></Box>
+                        <Box><Text isTruncated maxWidth={{ sm: "28", base: account ? "30" : "56" }} >{active ? account : 'Connect'}</Text></Box>
                         {active && <BiCopy />}
                     </Stack>
                     {active && <Box alignItems="center"></Box>}

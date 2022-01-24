@@ -327,8 +327,16 @@ const BtcToElysBridge = () => {
     }
 
     return (
-        <Container centerContent mt="16" minWidth="72" pb="10">
-            <Container centerContent alignItems="center" p="4" pt="0" maxWidth="container.md" border={"2px"} borderColor={"#ec7019"} rounded="3xl" shadow="lg">
+        <Container id='btcBridge' centerContent mt="16" minWidth="72" pb="10" width="100%" maxWidth={"800px"} >
+            <Box w="100%">
+                <Text color="#ec7019" my="2" fontSize={'2xl'}>Bridge to ELYS from BTC<sup style={{ color: "white" }}><i> experimental</i></sup></Text>
+                <Text mb="3">This tool provides a convenient way to convert BTC on the Bitcoin blockchain to ELYS on the FTM network.</Text>
+                <Text mb="3">It relies on ZooDex, HyperJump and Ren Project. These projects are outside of the control of Elyseos and things could change without notice.</Text>
+                <Text mb="3">We therefore can provide no assurances for it working and can offer no remedies if anything goes wrong.</Text>
+                <Text mb="3">Additionally due to nature of decentralised exchanges and liquidity pools you may not receive the best possible exchange rates.</Text>
+                <Text mb="5">Please test with small amounts initially.</Text>
+            </Box>
+            <Container centerContent alignItems="center" p="4" pt="0" maxWidth="container.md" border={"2px"} borderColor={"#ec7019"} rounded="3xl" shadow="lg" maxWidth="600px">
                 <Text my="5" textAlign="left" w="full" fontSize="xl" fontWeight="medium" color={"#ed6f1b"}>BTC to ELYS</Text>
                 <Container px="8">
                     <Stack spacing="5" w="full" direction="row" alignItems="center" p="2">
