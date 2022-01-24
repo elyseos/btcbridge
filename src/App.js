@@ -3,7 +3,7 @@ import BtcToElysBridge from "./components/BtcToElysBridge"
 import Navbar from "./components/Navbar"
 import SidePanel from "./components/SidePanel"
 import Footer from "./components/Footer"
-import { Box, Stack, Container, Image } from '@chakra-ui/react'
+import { Box, Stack, Container, Image, useColorMode } from '@chakra-ui/react'
 import ElysBanner from './images/elysBanner.png'
 import { useState, useEffect } from "react"
 import { isMobile } from 'react-device-detect';
@@ -12,6 +12,7 @@ import { ReactComponent as HamburgerIcon } from './hamburger_icon.svg'
 
 
 function App() {
+  const { colorMode, toggleColorMode } = useColorMode()
   const [elysPrice, setElysPrice] = useState({ usd: 0, ftm: 0, loaded: false })
   const [sideMenuHidden, setSideMenuHidden] = useState(false)
 
@@ -37,6 +38,10 @@ function App() {
     }
     getPrice().then(res => setElysPrice(res))
     setSideMenuHidden(isMobile ? true : false)
+
+    console.log("color", colorMode)
+    if (colorMode == "light")
+      toggleColorMode()
   }, [])
 
   return (
