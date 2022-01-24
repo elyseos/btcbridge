@@ -24,15 +24,15 @@ const Icon = (props) => {
     return (
         <a href={props.href} style={{
             textDecoration: 'none',
-            width: 70,
-            padding: 10,
+            width: "22",
+            padding: 20,
             textAlign: 'center',
             display: 'inline-block'
         }} target="_blank" rel="noreferrer"><img style={{
             verticalAlign: 'top',
             margin: 13
         }}
-            src={props.src} alt={props.alt} href={props.href} height={22} /></a>
+            src={props.src} alt={props.alt} href={props.href} style={{ width: "28px" }} /></a>
     )
 }
 
@@ -179,12 +179,16 @@ const SidePanel = (props) => {
                 position: 'absolute',
                 bottom: 20
             }}>
-                <Icon src={twitter} alt="twitter" href="https://twitter.com/ElyseosFDN" />
-                <Icon src={telegram} alt="telegram" href="https://t.me/joinchat/kJCUkY1WacpkZTVk" />
-                <Icon src={github} alt="github" href="https://github.com/elyseos/contracts" />
-                <Icon src={medium} alt="medium" href="https://medium.com/@Elyseos" />
-                <Icon src={email} alt="email" href="https://www.elyseos.com/email-signup" />
-                <Icon src={discord} alt="discord" href="https://discord.gg/gY2WMAnBem" />
+                <div style={{ margin: "0 0 -20px 0" }}>
+                    <Icon src={twitter} alt="twitter" href="https://twitter.com/ElyseosFDN" />
+                    <Icon src={telegram} alt="telegram" href="https://t.me/joinchat/kJCUkY1WacpkZTVk" />
+                    <Icon src={github} alt="github" href="https://github.com/elyseos/contracts" />
+                </div>
+                <div>
+                    <Icon src={medium} alt="medium" href="https://medium.com/@Elyseos" />
+                    <Icon src={email} alt="email" href="https://www.elyseos.com/email-signup" />
+                    <Icon src={discord} alt="discord" href="https://discord.gg/gY2WMAnBem" />
+                </div>
             </div>
         </div>
     )
