@@ -8,17 +8,20 @@ import { ethers, providers } from 'ethers'
 import { Bitcoin, Fantom } from "@renproject/chains"
 import RenJS from "@renproject/ren";
 import QRCode from "react-qr-code";
-import { ReactComponent as ElyseosLogo } from '../elyseos_logo.svg'
-import { ReactComponent as BTCLogo } from '../BTC_Logo.svg'
+import { ReactComponent as ElyseosLogo } from '../images/elyseos_logo.svg'
+import { ReactComponent as BTCLogo } from '../images/BTC_Logo.svg'
 import {
     ELYS_CONTRACT_ADDRESS,
-    FTM_CONTRACT_ADDRESS,
-    HYPER_ROUTER_ADDRESS,
-    RENBTC_CONTRACT__ADDRESS,
+    WFTM_CONTRACT_ADDRESS,
+    WBTC_CONTRACT_ADDRESS,
+    CURVE_WBTC_RENBTC_ADDRESS,
     SWAP_CONTRACT_ADDRESS,
-    ZOO_ROUTER_ADDRESS,
+    SPOOKYSWAP_ROUTER_ADDRESS,
     REN_BURN_GASLIMIT,
-    routerAbi, tokenAbi
+    CURVE_WBTC_C,
+    CURVE_RBTC_C,
+    curveStableSwapAbi,
+    uniswapV2RouterAbi, tokenAbi
 } from '../bridge_constants'
 import swapArtifact from '../artifacts/contracts/ELYSBTCSwap.sol/ELYSBTCSwap.json'
 
@@ -33,8 +36,8 @@ const BtcToElysBridge = () => {
     const { account, library } = useWeb3React()
     const [estimatedElysOut, setEstimateElysOut] = useState(0)
 
-    const zooRouter = useRef(null)
-    const hyperRouter = useRef(null)
+    const spookySwapRouter = useRef(null)
+    const curveSwap = useRef(null)
     const elysContract = useRef(null)
     const swapContract = useRef(null)
 
@@ -68,8 +71,8 @@ const BtcToElysBridge = () => {
             // INITIALIZE CONTRACTs
             swapContract.current = new ethers.Contract(SWAP_CONTRACT_ADDRESS, swapAbi, library.getSigner())
             elysContract.current = new ethers.Contract(ELYS_CONTRACT_ADDRESS, tokenAbi, library.getSigner())
-            zooRouter.current = new ethers.Contract(ZOO_ROUTER_ADDRESS, routerAbi, library.getSigner())
-            hyperRouter.current = new ethers.Contract(HYPER_ROUTER_ADDRESS, routerAbi, library.getSigner())
+            spookySwapRouter.current = new ethers.Contract(SPOOKYSWAP_ROUTER_ADDRESS, uniswapV2RouterAbi, library.getSigner())
+            curveSwap.current = new ethers.Contract(CURVE_WBTC_RENBTC_ADDRESS, curveStableSwapAbi, library.getSigner())
 
             swapContract.current.on("BTCToELYSSwap", (user, BTCin, ELYSout, _msg, out) => {
                 if (user === account) {
@@ -112,8 +115,8 @@ const BtcToElysBridge = () => {
             // NULL ALL CONTRACTs
             swapContract.current = null
             elysContract.current = null
-            zooRouter.current = null
-            hyperRouter.current = null
+            spookySwapRouter.current = null
+            curveSwap.current = null
 
             // SET OTHER STATES TO DEFAULT
             setBtcIn('')
@@ -128,7 +131,8 @@ const BtcToElysBridge = () => {
     useEffect(() => {
         const updateEstimatedElys = async () => {
             let btcInputValue = Number(btcIn)
-            if (btcInputValue === 0) { // Protect from Uniswap Insufficient Amount error
+            if (btcInputValue <= 0) { // Protect from Uniswap Insufficient Amount error
+                setBtcIn('0')
                 setEstimateElysOut('0')
                 return
             } else btcInputValue = ethers.utils.parseUnits(String(btcIn), 8)
@@ -140,10 +144,11 @@ const BtcToElysBridge = () => {
                 btcInputValue.mul(renFee.burn + renFee.mint).div(10000)
             ).sub(ethers.utils.parseUnits(renFee.lock, 8))
             console.log(ethers.utils.formatUnits(btcInputValue, 8))
-            let ftmOut = (await hyperRouter.current.getAmountsOut(btcInputValue, [RENBTC_CONTRACT__ADDRESS, FTM_CONTRACT_ADDRESS]))[1]
+            // TODO swap hyperRouter with Curve and spookySwapRouter with spooky
+            let wbtcOut = await curveSwap.current.get_dy(CURVE_RBTC_C, CURVE_WBTC_C, btcInputValue)
 
-            console.log(ethers.utils.formatUnits(ftmOut, 18))
-            let elysOut = (await zooRouter.current.getAmountsOut(ftmOut, [FTM_CONTRACT_ADDRESS, ELYS_CONTRACT_ADDRESS]))[1]
+            console.log(ethers.utils.formatUnits(wbtcOut, 8))
+            let elysOut = (await spookySwapRouter.current.getAmountsOut(wbtcOut, [WBTC_CONTRACT_ADDRESS, WFTM_CONTRACT_ADDRESS, ELYS_CONTRACT_ADDRESS]))[2]
             setEstimateElysOut(ethers.utils.formatUnits(elysOut, 5))
         }
 
@@ -373,7 +378,7 @@ const BtcToElysBridge = () => {
                                 <Text>{renFee.lock} BTC</Text>
                             </Stack>
                             <Stack direction={"row"} justifyContent={"space-between"}>
-                                <Text>Est FTM Fee Fee:</Text>
+                                <Text>Est. FTM Fee:</Text>
                                 <Text>{ftmFee} FTM</Text>
                             </Stack>
                         </Container></>}

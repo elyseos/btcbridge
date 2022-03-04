@@ -1,6 +1,6 @@
 import { ELYS_FTM_PAIR, FTM_USD_PAIR } from '../bridge_constants';
 import { ethers } from 'ethers';
-import { abi } from '../uniswapV2PairABI.js';
+import { abi } from './uniswapV2PairABI.js';
 
 const rpcEndpoint = 'https://rpc.ftm.tools/'
 

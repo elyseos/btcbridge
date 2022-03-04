@@ -8,15 +8,18 @@ import { ethers } from 'ethers'
 import { Bitcoin, Fantom } from "@renproject/chains"
 import RenJS from "@renproject/ren";
 import WAValidator from 'multicoin-address-validator'
-import { ReactComponent as ElyseosLogo } from '../elyseos_logo.svg'
+import { ReactComponent as ElyseosLogo } from '../images/elyseos_logo.svg'
 import {
     ELYS_CONTRACT_ADDRESS,
-    FTM_CONTRACT_ADDRESS,
-    HYPER_ROUTER_ADDRESS,
-    RENBTC_CONTRACT__ADDRESS,
+    WFTM_CONTRACT_ADDRESS,
+    WBTC_CONTRACT_ADDRESS,
     SWAP_CONTRACT_ADDRESS,
-    ZOO_ROUTER_ADDRESS,
-    routerAbi, tokenAbi
+    SPOOKYSWAP_ROUTER_ADDRESS,
+    CURVE_WBTC_RENBTC_ADDRESS,
+    CURVE_WBTC_C,
+    CURVE_RBTC_C,
+    curveStableSwapAbi,
+    uniswapV2RouterAbi, tokenAbi
 } from '../bridge_constants'
 import swapArtifact from '../artifacts/contracts/ELYSBTCSwap.sol/ELYSBTCSwap.json'
 let swapAbi = swapArtifact.abi
@@ -29,8 +32,8 @@ const ElysToBtcBridge = () => {
     const { account, library } = useWeb3React()
     const [estimatedBtcOut, setEstimateBtcOut] = useState(0)
 
-    const zooRouter = useRef(null)
-    const hyperRouter = useRef(null)
+    const spookySwapRouter = useRef(null)
+    const curveSwap = useRef(null)
     const elysContract = useRef(null)
     const swapContract = useRef(null)
 
@@ -73,8 +76,8 @@ const ElysToBtcBridge = () => {
             // INITIALIZE CONTRACTs
             swapContract.current = new ethers.Contract(SWAP_CONTRACT_ADDRESS, swapAbi, library.getSigner())
             elysContract.current = new ethers.Contract(ELYS_CONTRACT_ADDRESS, tokenAbi, library.getSigner())
-            zooRouter.current = new ethers.Contract(ZOO_ROUTER_ADDRESS, routerAbi, library.getSigner())
-            hyperRouter.current = new ethers.Contract(HYPER_ROUTER_ADDRESS, routerAbi, library.getSigner())
+            spookySwapRouter.current = new ethers.Contract(SPOOKYSWAP_ROUTER_ADDRESS, uniswapV2RouterAbi, library.getSigner())
+            curveSwap.current = new ethers.Contract(CURVE_WBTC_RENBTC_ADDRESS, curveStableSwapAbi, library.getSigner())
 
             // UPDATE ELYS BALANCE
             elysContract.current.balanceOf(account).then((balance) => {
@@ -105,8 +108,8 @@ const ElysToBtcBridge = () => {
             // NULL ALL CONTRACTs
             swapContract.current = null
             elysContract.current = null
-            zooRouter.current = null
-            hyperRouter.current = null
+            spookySwapRouter.current = null
+            curveSwap.current = null
 
             // SET OTHER STATES TO DEFAULT
             setElysIn('')
@@ -124,7 +127,8 @@ const ElysToBtcBridge = () => {
     useEffect(() => {
         const updateEstimatedBtcAndTxState = async () => {
             let elysInputValue = Number(elysIn)
-            if (elysInputValue === 0) { // Protect from Uniswap Insufficient Amount error
+            if (elysInputValue <= 0) { // Protect from Uniswap Insufficient Amount error
+                setElysIn('0')
                 setEstimateBtcOut('0')
                 return
             } else elysInputValue = String(elysIn)
@@ -132,10 +136,9 @@ const ElysToBtcBridge = () => {
             if (account == null) {
                 return
             }
-
-            let ftmOut = (await zooRouter.current.getAmountsOut(ethers.utils.parseUnits(elysInputValue, 5), [ELYS_CONTRACT_ADDRESS, FTM_CONTRACT_ADDRESS]))[1]
-            let renBtcOut = (await hyperRouter.current.getAmountsOut(ftmOut, [FTM_CONTRACT_ADDRESS, RENBTC_CONTRACT__ADDRESS]))[1]
-            setEstimateBtcOut(ethers.utils.formatUnits(renBtcOut.mul(9985).div(10000), 8)) // adjust for RenVM fees
+            let wbtcOut = (await spookySwapRouter.current.getAmountsOut(ethers.utils.parseUnits(elysInputValue, 5), [ELYS_CONTRACT_ADDRESS, WFTM_CONTRACT_ADDRESS, WBTC_CONTRACT_ADDRESS]))[2]
+            let renBtcOut = await curveSwap.current.get_dy(CURVE_WBTC_C, CURVE_RBTC_C, wbtcOut)
+            setEstimateBtcOut(ethers.utils.formatUnits(renBtcOut.mul(9985).div(10000), 8)) // adjusted for RenVM fees
 
             if (
                 ethers.BigNumber.from(currentAllowance.current).lt(ethers.utils.parseUnits(elysInputValue, 5)) &&

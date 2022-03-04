@@ -8,7 +8,7 @@ import ElysBanner from './images/elysBanner.png'
 import { useState, useEffect } from "react"
 import { isMobile } from 'react-device-detect';
 import elysPriceGetter from './lib/elysprice'
-import { ReactComponent as HamburgerIcon } from './hamburger_icon.svg'
+import { ReactComponent as HamburgerIcon } from './images/hamburger_icon.svg'
 
 
 function App() {
