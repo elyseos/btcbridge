@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react'
 import { Box, Container, Link, Stack } from "@chakra-ui/layout"
-import { Text, Button, ButtonGroup, Input, Image, Spinner, Flex, useToast, Divider } from '@chakra-ui/react'
+import { Text, Button, ButtonGroup, Input, Spinner, Flex, useToast, Divider } from '@chakra-ui/react'
 import { ExternalLinkIcon } from '@chakra-ui/icons'
 import { BsArrowUpRight } from 'react-icons/bs'
 import { useWeb3React } from "@web3-react/core"
@@ -30,7 +30,6 @@ const renJS = new RenJS("mainnet", { useV2TransactionFormat: true })
 
 const ElysToBtcBridge = () => {
     const { account, library } = useWeb3React()
-    const [estimatedBtcOut, setEstimateBtcOut] = useState(0)
 
     const spookySwapRouter = useRef(null)
     const curveSwap = useRef(null)
@@ -39,6 +38,7 @@ const ElysToBtcBridge = () => {
 
     const [elysIn, setElysIn] = useState('')
     const elysBalance = useRef(0)
+    const [estimatedBtcOut, setEstimateBtcOut] = useState(0)
 
     const [btcAddress, setBtcAddress] = useState('')
     const [addressValidity, setAddressValidity] = useState(false)
@@ -66,7 +66,7 @@ const ElysToBtcBridge = () => {
     const [transactionStage, setTransactionStage] = useState(TS_APPROVE_ELYS)
 
     const txStatusToast = useToast()
-    const [txReciept, setTxReceipt] = useState(null)
+    const [txReceipt, setTxReceipt] = useState(null)
     const [renIn, setRenIn] = useState(null)
 
     // ----------------------------------USE-EFFECTs----------------------------------
@@ -162,8 +162,8 @@ const ElysToBtcBridge = () => {
 
     // TRANSACTION SUCCESSFUL TOAST
     useEffect(() => {
-        console.log("TxReceipt:", txReciept)
-        if (txReciept) {
+        console.log("TxReceipt:", txReceipt)
+        if (txReceipt) {
             txStatusToast({
                 title: "😄 Transaction Successful",
                 description: "Transaction has been successful. Continue on!",
@@ -172,7 +172,7 @@ const ElysToBtcBridge = () => {
                 isClosable: true,
             })
         }
-    }, [txReciept])
+    }, [txReceipt])
 
     // RESTARTS WHOLE PROCESS FOR A CONNECTED WALLET
     const restartProcess = () => {
@@ -228,7 +228,7 @@ const ElysToBtcBridge = () => {
             console.log(tx)
             raiseTxSentToast(tx.hash)
             setTransactionStage(TS_TX_CONFIRM_WAIT)
-            continuousCheckTransactionMined(tx.hash, 1)
+            continuousCheckTransactionMined(tx.hash, TS_SWAP_ELYS_RENBTC)
         }).catch((err) => {
             console.log(TS_APPROVE_ELYS)
             console.log(err)
@@ -264,11 +264,10 @@ const ElysToBtcBridge = () => {
         txStatus.then(async (tx) => {
             console.log(tx)
             raiseTxSentToast(tx.hash)
-            setTransactionStage(TS_REN_BRIDGE)
-            await continuousCheckTransactionMined(tx.hash, 2)
+            await continuousCheckTransactionMined(tx.hash, TS_REN_BRIDGE)
         }).catch((err) => {
             setTransactionStage(TS_SWAP_ELYS_RENBTC)
-            console.log(err)
+            console.log("Errored while sending swap tx:", err)
             txStatusToast({
                 title: "☹️ Rejected",
                 description: err.message,
@@ -281,22 +280,21 @@ const ElysToBtcBridge = () => {
 
     // CHECK IF TRANSACTION MINED
     const isTransactionMined = async (transactionHash) => {
-        const txReceipt = await library.getTransactionReceipt(transactionHash);
-        if (txReceipt && txReceipt.blockNumber) {
-            return txReceipt;
+        const _txReceipt = await library.getTransactionReceipt(transactionHash);
+        if (_txReceipt && _txReceipt.blockNumber) {
+            return _txReceipt;
         }
     }
 
     // CHECK IF TRANSACTION MINED REPEATEDLY
-    const continuousCheckTransactionMined = async (transactionHash, txStage) => {
-        let txReceipt = await isTransactionMined(transactionHash)
-        if (txReceipt) {
-            setTxReceipt(txReceipt)
-            if (txStage === TS_REN_BRIDGE) setTransactionStage(TS_SWAP_ELYS_RENBTC)
-            else setTransactionStage(txStage + 1)
+    const continuousCheckTransactionMined = async (transactionHash, newTxStage) => {
+        let _txReceipt = await isTransactionMined(transactionHash)
+        if (_txReceipt) {
+            setTxReceipt(_txReceipt)
+            setTransactionStage(newTxStage)
             return
         }
-        else setTimeout(continuousCheckTransactionMined(transactionHash, txStage), 1000)
+        else setTimeout(continuousCheckTransactionMined(transactionHash, newTxStage), 1000)
     }
 
     // RAISE TRANSACTION SENT TOAST
