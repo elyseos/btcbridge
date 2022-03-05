@@ -32,8 +32,9 @@ let swapAbi = swapArtifact.abi
 // let SWAP_CONTRACT_ADDRESS = '0xb18595Fd7D2D050c9dDb07c06FfA69BD1244cC1F'
 const renJS = new RenJS("mainnet", { useV2TransactionFormat: true })
 
-const BtcToElysBridge = () => {
+const BtcToElysBridge = ({ issueState }) => {
     const { account, library } = useWeb3React()
+    const [issue, setIssue] = issueState
     const [estimatedElysOut, setEstimateElysOut] = useState(0)
 
     const spookySwapRouter = useRef(null)
@@ -67,7 +68,7 @@ const BtcToElysBridge = () => {
     // ----------------------------------USE-EFFECTs----------------------------------
     // FOR INITIALIZING VALUES ON STATE CHANGE
     useEffect(() => {
-        if (account) {
+        if (account && !issue.status) {
             // INITIALIZE CONTRACTs
             swapContract.current = new ethers.Contract(SWAP_CONTRACT_ADDRESS, swapAbi, library.getSigner())
             elysContract.current = new ethers.Contract(ELYS_CONTRACT_ADDRESS, tokenAbi, library.getSigner())
@@ -105,6 +106,8 @@ const BtcToElysBridge = () => {
                 res.lock = ethers.utils.formatUnits(res.lock.toString(), 8)
                 setRenFee(res)
                 console.log(res)
+            }).catch(_ => {
+                setIssue({ status: true, description: "Cannot fetch RenVM fees. This might indicate a problem with the bridge. Retry after a few minutes." })
             })
 
             setBridgeStage(REN_WAITING)
@@ -132,12 +135,12 @@ const BtcToElysBridge = () => {
         const updateEstimatedElys = async () => {
             let btcInputValue = Number(btcIn)
             if (btcInputValue <= 0) { // Protect from Uniswap Insufficient Amount error
-                setBtcIn('0')
+                setBtcIn('')
                 setEstimateElysOut('0')
                 return
             } else btcInputValue = ethers.utils.parseUnits(String(btcIn), 8)
 
-            if (account == null) {
+            if ((account == null) || (issue.status)) {
                 return
             }
             btcInputValue = btcInputValue.sub(
@@ -316,6 +319,8 @@ const BtcToElysBridge = () => {
 
     // ENABLES/DISABLES ACTION BUTTON BASED ON TRANSACTION-STATE
     const getActionButtonDisabled = () => {
+        if (issue.status)
+            return true
         if (!account || !isChecked)
             return true
         if (bridgeStage === REN_WAITING)
@@ -336,12 +341,12 @@ const BtcToElysBridge = () => {
             <Box w="100%">
                 <Text color="#ec7019" my="2" fontSize={'2xl'}>Bridge to ELYS from BTC<sup style={{ color: "white" }}><i> experimental</i></sup></Text>
                 <Text mb="3">This tool provides a convenient way to convert BTC on the Bitcoin blockchain to ELYS on the FTM network.</Text>
-                <Text mb="3">It relies on ZooDex, HyperJump and Ren Project. These projects are outside of the control of Elyseos and things could change without notice.</Text>
+                <Text mb="3">It relies on SpookySwap, Curve and Ren Project. These projects are outside of the control of Elyseos and things could change without notice.</Text>
                 <Text mb="3">We therefore can provide no assurances for it working and can offer no remedies if anything goes wrong.</Text>
                 <Text mb="3">Additionally due to nature of decentralised exchanges and liquidity pools you may not receive the best possible exchange rates.</Text>
                 <Text mb="5">Please test with small amounts initially.</Text>
             </Box>
-            <Container centerContent alignItems="center" p="4" pt="0" maxWidth="container.md" border={"2px"} borderColor={"#ec7019"} rounded="3xl" shadow="lg" maxWidth="600px">
+            <Container centerContent alignItems="center" p="4" pt="0" border={"2px"} borderColor={"#ec7019"} rounded="3xl" shadow="lg" maxWidth="600px">
                 <Text my="5" textAlign="left" w="full" fontSize="xl" fontWeight="medium" color={"#ed6f1b"}>BTC to ELYS</Text>
                 <Container px="8">
                     <Stack spacing="5" w="full" direction="row" alignItems="center" p="2">

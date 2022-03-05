@@ -9,6 +9,8 @@ import { Bitcoin, Fantom } from "@renproject/chains"
 import RenJS from "@renproject/ren";
 import WAValidator from 'multicoin-address-validator'
 import { ReactComponent as ElyseosLogo } from '../images/elyseos_logo.svg'
+import { ReactComponent as BTCLogo } from '../images/BTC_Logo.svg'
+
 import {
     ELYS_CONTRACT_ADDRESS,
     WFTM_CONTRACT_ADDRESS,
@@ -28,8 +30,9 @@ const TEXT_COLOR = 'white'
 
 const renJS = new RenJS("mainnet", { useV2TransactionFormat: true })
 
-const ElysToBtcBridge = () => {
+const ElysToBtcBridge = ({ issueState }) => {
     const { account, library } = useWeb3React()
+    const [issue, setIssue] = issueState
 
     const spookySwapRouter = useRef(null)
     const curveSwap = useRef(null)
@@ -38,6 +41,8 @@ const ElysToBtcBridge = () => {
 
     const [elysIn, setElysIn] = useState('')
     const elysBalance = useRef(0)
+    const [estimatedRenBtcOut, setEstimateRenBtcOut] = useState(0)
+    const [renFees, setRenFees] = useState({})
     const [estimatedBtcOut, setEstimateBtcOut] = useState(0)
 
     const [btcAddress, setBtcAddress] = useState('')
@@ -72,7 +77,7 @@ const ElysToBtcBridge = () => {
     // ----------------------------------USE-EFFECTs----------------------------------
     // FOR INITIALIZING VALUES ON STATE CHANGE
     useEffect(() => {
-        if (account) {
+        if (account && !issue.status) {
             // INITIALIZE CONTRACTs
             swapContract.current = new ethers.Contract(SWAP_CONTRACT_ADDRESS, swapAbi, library.getSigner())
             elysContract.current = new ethers.Contract(ELYS_CONTRACT_ADDRESS, tokenAbi, library.getSigner())
@@ -99,6 +104,17 @@ const ElysToBtcBridge = () => {
                     console.log("EVENT INFO:", user, ELYSin, renBTCout, out)
                 }
             });
+
+            renJS.getFees({
+                asset: "BTC",
+                from: Fantom(library),
+                to: Bitcoin(),
+            }).then(res => {
+                console.log(res)
+                setRenFees(res)
+            }).catch(_ => {
+                setIssue({ status: true, description: "Cannot fetch RenVM fees. This might indicate a problem with the bridge. Retry after a few minutes." })
+            })
 
             setTransactionStage(TS_SWAP_ELYS_RENBTC)
         }
@@ -128,18 +144,28 @@ const ElysToBtcBridge = () => {
         const updateEstimatedBtcAndTxState = async () => {
             let elysInputValue = Number(elysIn)
             if (elysInputValue <= 0) { // Protect from Uniswap Insufficient Amount error
-                setElysIn('0')
-                setEstimateBtcOut('0')
+                setElysIn('')
+                setEstimateRenBtcOut('0')
                 return
             } else elysInputValue = String(elysIn)
 
-            if (account == null) {
+            if ((account == null) || (issue.status)) {
                 return
             }
             let wbtcOut = (await spookySwapRouter.current.getAmountsOut(ethers.utils.parseUnits(elysInputValue, 5), [ELYS_CONTRACT_ADDRESS, WFTM_CONTRACT_ADDRESS, WBTC_CONTRACT_ADDRESS]))[2]
             let renBtcOut = await curveSwap.current.get_dy(CURVE_WBTC_C, CURVE_RBTC_C, wbtcOut)
-            setEstimateBtcOut(ethers.utils.formatUnits(renBtcOut.mul(9985).div(10000), 8)) // adjusted for RenVM fees
+            renBtcOut = renBtcOut.mul(9985).div(10000)
 
+            setEstimateRenBtcOut(ethers.utils.formatUnits(renBtcOut, 8)) // adjusted for RenVM fees
+            console.log()
+            if (renFees.release && renBtcOut.gt(ethers.BigNumber.from(renFees.release.toString())))
+                setEstimateBtcOut(ethers.utils.formatUnits(
+                    renBtcOut.sub(ethers.BigNumber.from(
+                        renFees.release.toString())), 8))
+            else setEstimateBtcOut('0')
+
+            currentAllowance.current = await elysContract.current.allowance(account, SWAP_CONTRACT_ADDRESS)
+            console.log("Updated allowance:", currentAllowance.current.toString())
             if (
                 ethers.BigNumber.from(currentAllowance.current).lt(ethers.utils.parseUnits(elysInputValue, 5)) &&
                 transactionStage === TS_SWAP_ELYS_RENBTC
@@ -228,7 +254,10 @@ const ElysToBtcBridge = () => {
             console.log(tx)
             raiseTxSentToast(tx.hash)
             setTransactionStage(TS_TX_CONFIRM_WAIT)
-            continuousCheckTransactionMined(tx.hash, TS_SWAP_ELYS_RENBTC)
+            continuousCheckTransactionMined(tx.hash, TS_SWAP_ELYS_RENBTC, async () => {
+                currentAllowance.current = await elysContract.current.allowance(account, SWAP_CONTRACT_ADDRESS)
+                console.log("Updated allowance:", currentAllowance.current.toString())
+            })
         }).catch((err) => {
             console.log(TS_APPROVE_ELYS)
             console.log(err)
@@ -262,6 +291,7 @@ const ElysToBtcBridge = () => {
         setTransactionStage(TS_CONFIRM_TX)
         let txStatus = swapContract.current.swapELYSToRenBTC(elysToSwap)
         txStatus.then(async (tx) => {
+            setTransactionStage(TS_TX_CONFIRM_WAIT)
             console.log(tx)
             raiseTxSentToast(tx.hash)
             await continuousCheckTransactionMined(tx.hash, TS_REN_BRIDGE)
@@ -287,14 +317,16 @@ const ElysToBtcBridge = () => {
     }
 
     // CHECK IF TRANSACTION MINED REPEATEDLY
-    const continuousCheckTransactionMined = async (transactionHash, newTxStage) => {
+    const continuousCheckTransactionMined = async (transactionHash, newTxStage, asyncAction = null) => {
         let _txReceipt = await isTransactionMined(transactionHash)
         if (_txReceipt) {
             setTxReceipt(_txReceipt)
             setTransactionStage(newTxStage)
+            if (asyncAction)
+                await asyncAction()
             return
         }
-        else setTimeout(continuousCheckTransactionMined(transactionHash, newTxStage), 1000)
+        else setTimeout(continuousCheckTransactionMined(transactionHash, newTxStage, asyncAction), 1000)
     }
 
     // RAISE TRANSACTION SENT TOAST
@@ -339,7 +371,6 @@ const ElysToBtcBridge = () => {
             // Print Fantom transaction hash.
             .on("transactionHash", (txHash) => {
                 setTransactionStage(TS_REN_BRIDGE_PROCESSING)
-                setBridgeStage(REN_TX_ON_FTM)
                 txStatusToast({
                     title: "Transaction submitted on Fantom",
                     description: <>View on <Link href={`https://ftmscan.com/tx/${txHash}`} isExternal>
@@ -350,7 +381,8 @@ const ElysToBtcBridge = () => {
                     isClosable: true,
                 })
                 console.log(`FTM txHash: ${txHash}`)
-                setBridgeTxHash([txHash, bridgeTxHash[1]])
+                setBridgeTxHash([String(txHash), bridgeTxHash[1]])
+                setBridgeStage(REN_TX_ON_FTM)
             });
 
         await burnAndRelease
@@ -431,7 +463,11 @@ const ElysToBtcBridge = () => {
 
     // ENABLES/DISABLES ACTION BUTTON BASED ON TRANSACTION-STATE
     const getActionButtonDisabled = () => {
-        if (!account)
+        if (Number(estimatedBtcOut) <= 0)
+            return true
+        if (issue.status)
+            return true
+        if (!account && issue.status)
             return true
         if (transactionStage === TS_APPROVE_ELYS)
             return false
@@ -472,7 +508,7 @@ const ElysToBtcBridge = () => {
                 <Text color="#ec7019" my="2" fontSize={'2xl'}>Bridge to BTC from ELYS<sup style={{ color: "white" }}><i> experimental</i></sup></Text>
                 <Text mb="3">This tool provides a convenient way to convert ELYS on the FTM network to BTC on the Bitcoin blockchain.</Text>
 
-                <Text mb="3">It relies on ZooDex, HyperJump and Ren Project. These projects are outside of the control of Elyseos and things could change without notice.</Text>
+                <Text mb="3">It relies on SpookySwap, Curve and Ren Project. These projects are outside of the control of Elyseos and things could change without notice.</Text>
                 <Text mb="3">We therefore can provide no assurances for it working and can offer no remedies if anything goes wrong.</Text>
                 <Text mb="3">Additionally due to nature of decentralised exchanges and liquidity pools you may not receive the best possible exchange rates.</Text>
                 <Text mb="5">Please test with small amounts initially.</Text>
@@ -494,7 +530,7 @@ const ElysToBtcBridge = () => {
                         <Button w="full" mr="-px" disabled={!account} onClick={() => setElysInFromPercent(100)} color="#ec7019">100%</Button>
                     </ButtonGroup>
                 </Stack>
-                <Text w="fit-content" my="2" color={TEXT_COLOR}>{`≈ ${estimatedBtcOut} BTC`}</Text>
+                <Text w="fit-content" my="2" color={TEXT_COLOR}>{`≈ ${estimatedRenBtcOut} BTC`}</Text>
 
                 {Number(renIn) ?
                     <Text w="fit-content" mt="2" color={TEXT_COLOR}>
@@ -503,8 +539,12 @@ const ElysToBtcBridge = () => {
                     : <></>
                 }
 
+                <Stack direction='row' alignItems="center" w="full" mb="2" mt="20px" border={"2px"} rounded={"2xl"} borderColor={"#ed6f1b"} py="3" px="5" justifyContent={"space-between"}>
+                    <Text color={TEXT_COLOR} >Receiving</Text>
+                    <BTCLogo style={{ height: 40, maxWidth: '60px', paddingLeft: "20px" }} />
+                    <Text fontWeight={"bold"} fontSize={'lg'} color={TEXT_COLOR} >{`≈ ${estimatedBtcOut} BTC`}</Text>
+                </Stack>
                 <Divider my={"20px"} w="40%" border={"2px"} />
-
                 <Box w="full" mb="6">
                     <Text mb="2" color="#ec7019">Bridge tokens to: </Text>
                     <Input
