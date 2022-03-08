@@ -144,7 +144,8 @@ const ElysToBtcBridge = ({ issueState }) => {
         const updateEstimatedBtcAndTxState = async () => {
             let elysInputValue = Number(elysIn)
             if (elysInputValue <= 0) { // Protect from Uniswap Insufficient Amount error
-                setElysIn('')
+                if (elysInputValue < 0)
+                    setElysIn('0')
                 setEstimateRenBtcOut('0')
                 return
             } else elysInputValue = String(elysIn)

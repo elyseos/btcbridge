@@ -135,7 +135,8 @@ const BtcToElysBridge = ({ issueState }) => {
         const updateEstimatedElys = async () => {
             let btcInputValue = Number(btcIn)
             if (btcInputValue <= 0) { // Protect from Uniswap Insufficient Amount error
-                setBtcIn('')
+                if (btcInputValue < 0)
+                    setBtcIn('0')
                 setEstimateElysOut('0')
                 return
             } else btcInputValue = ethers.utils.parseUnits(String(btcIn), 8)
@@ -147,7 +148,7 @@ const BtcToElysBridge = ({ issueState }) => {
                 btcInputValue.mul(renFee.burn + renFee.mint).div(10000)
             ).sub(ethers.utils.parseUnits(renFee.lock, 8))
             console.log(ethers.utils.formatUnits(btcInputValue, 8))
-            // TODO swap hyperRouter with Curve and spookySwapRouter with spooky
+
             let wbtcOut = await curveSwap.current.get_dy(CURVE_RBTC_C, CURVE_WBTC_C, btcInputValue)
 
             console.log(ethers.utils.formatUnits(wbtcOut, 8))
