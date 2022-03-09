@@ -13,6 +13,7 @@ import { ReactComponent as BTCLogo } from '../images/BTC_Logo.svg'
 
 import {
     ELYS_CONTRACT_ADDRESS,
+    RBTC_CONTRACT_ADDRESS,
     WFTM_CONTRACT_ADDRESS,
     WBTC_CONTRACT_ADDRESS,
     SWAP_CONTRACT_ADDRESS,
@@ -37,6 +38,7 @@ const ElysToBtcBridge = ({ issueState }) => {
     const spookySwapRouter = useRef(null)
     const curveSwap = useRef(null)
     const elysContract = useRef(null)
+    const renBTCContract = useRef(null)
     const swapContract = useRef(null)
 
     const [elysIn, setElysIn] = useState('')
@@ -44,6 +46,8 @@ const ElysToBtcBridge = ({ issueState }) => {
     const [estimatedRenBtcOut, setEstimateRenBtcOut] = useState(0)
     const [renFees, setRenFees] = useState({})
     const [estimatedBtcOut, setEstimateBtcOut] = useState(0)
+
+    const renBTCBal = useRef(null)
 
     const [btcAddress, setBtcAddress] = useState('')
     const [addressValidity, setAddressValidity] = useState(false)
@@ -81,6 +85,7 @@ const ElysToBtcBridge = ({ issueState }) => {
             // INITIALIZE CONTRACTs
             swapContract.current = new ethers.Contract(SWAP_CONTRACT_ADDRESS, swapAbi, library.getSigner())
             elysContract.current = new ethers.Contract(ELYS_CONTRACT_ADDRESS, tokenAbi, library.getSigner())
+            renBTCContract.current = new ethers.Contract(RBTC_CONTRACT_ADDRESS, tokenAbi, library.getSigner())
             spookySwapRouter.current = new ethers.Contract(SPOOKYSWAP_ROUTER_ADDRESS, uniswapV2RouterAbi, library.getSigner())
             curveSwap.current = new ethers.Contract(CURVE_WBTC_RENBTC_ADDRESS, curveStableSwapAbi, library.getSigner())
 
@@ -90,20 +95,26 @@ const ElysToBtcBridge = ({ issueState }) => {
                 console.log("ELYS Balance:", elysBalance.current)
             })
 
+            // UPDATE RenBTC BALANCE
+            renBTCContract.current.balanceOf(account).then((balance) => {
+                renBTCBal.current = balance
+                console.log("RenBTC Balance:", renBTCBal.current.toString())
+            })
+
             // FETCH APPROVED AMOUNT
             elysContract.current.allowance(account, SWAP_CONTRACT_ADDRESS).then((out) => {
                 currentAllowance.current = out
                 console.log("ELYS approved to swap contract:", String(currentAllowance.current))
             })
 
-            swapContract.current.on("ELYStoRenBTCSwap", (user, ELYSin, renBTCout, out) => {
-                console.log("ELYStoRenBTCSwap Event:", user, ELYSin, renBTCout, out)
+            // swapContract.current.on("ELYStoRenBTCSwap", (user, ELYSin, renBTCout, out) => {
+            //     console.log("ELYStoRenBTCSwap Event:", user, ELYSin, renBTCout, out)
 
-                if (user === account) {
-                    setRenIn(renBTCout)
-                    console.log("EVENT INFO:", user, ELYSin, renBTCout, out)
-                }
-            });
+            //     if (user === account) {
+            //         setRenIn(renBTCout)
+            //         console.log("EVENT INFO:", user, ELYSin, renBTCout, out)
+            //     }
+            // });
 
             renJS.getFees({
                 asset: "BTC",
@@ -138,6 +149,8 @@ const ElysToBtcBridge = ({ issueState }) => {
 
             setTransactionStage(TS_APPROVE_ELYS)
             setBridgeStage(REN_WAITING)
+
+            renBTCBal.current = null
         }
     }, [account, library])
 
@@ -301,7 +314,9 @@ const ElysToBtcBridge = ({ issueState }) => {
             setTransactionStage(TS_TX_CONFIRM_WAIT)
             console.log(tx)
             raiseTxSentToast(tx.hash)
-            await continuousCheckTransactionMined(tx, TS_REN_BRIDGE, false)
+            await continuousCheckTransactionMined(tx, TS_REN_BRIDGE, false, async () => {
+                setRenIn((await renBTCContract.current.balanceOf(account)).sub(renBTCBal.current))
+            })
         } catch (err) {
             setTransactionStage(TS_SWAP_ELYS_RENBTC)
             console.log("Errored while sending swap tx:", err)
