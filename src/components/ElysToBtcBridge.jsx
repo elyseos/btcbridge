@@ -117,6 +117,7 @@ const ElysToBtcBridge = ({ issueState }) => {
             })
 
             setTransactionStage(TS_SWAP_ELYS_RENBTC)
+            setElysIn(Number(elysIn))
         }
 
         // IF NO ACCOUNT LOGGED, RESET PARAMS
@@ -191,6 +192,7 @@ const ElysToBtcBridge = ({ issueState }) => {
     useEffect(() => {
         console.log("TxReceipt:", txReceipt)
         if (txReceipt) {
+            txStatusToast.closeAll()
             txStatusToast({
                 title: "😄 Transaction Successful",
                 description: "Transaction has been successful. Continue on!",
@@ -262,6 +264,8 @@ const ElysToBtcBridge = ({ issueState }) => {
         }).catch((err) => {
             console.log(TS_APPROVE_ELYS)
             console.log(err)
+            txStatusToast.closeAll()
+
             txStatusToast({
                 title: "☹️ Rejected",
                 description: err.message,
@@ -279,6 +283,8 @@ const ElysToBtcBridge = ({ issueState }) => {
         let elysToSwap = ethers.utils.parseUnits(elysIn, 5)
         console.log(`ELYS to be swapped:" ${String(elysToSwap)}/${ethers.utils.parseUnits(elysBalance.current, 5)}`)
         if (ethers.BigNumber.from(ethers.utils.parseUnits(elysBalance.current, 5)).lt(ethers.BigNumber.from(elysToSwap))) {
+            txStatusToast.closeAll()
+
             txStatusToast({
                 title: "👛 Wallet Balance Exceeded",
                 description: `ELYS amount exceeds balance of ${elysBalance.current}`,
@@ -299,6 +305,8 @@ const ElysToBtcBridge = ({ issueState }) => {
         }).catch((err) => {
             setTransactionStage(TS_SWAP_ELYS_RENBTC)
             console.log("Errored while sending swap tx:", err)
+            txStatusToast.closeAll()
+
             txStatusToast({
                 title: "☹️ Rejected",
                 description: err.message,
@@ -332,6 +340,8 @@ const ElysToBtcBridge = ({ issueState }) => {
 
     // RAISE TRANSACTION SENT TOAST
     const raiseTxSentToast = (txHash) => {
+        txStatusToast.closeAll()
+
         txStatusToast({
             title: "⏲️ Transaction Sent",
             description: <>View on <Link href={`https://ftmscan.com/tx/${txHash}`} isExternal>
@@ -372,6 +382,8 @@ const ElysToBtcBridge = ({ issueState }) => {
             // Print Fantom transaction hash.
             .on("transactionHash", (txHash) => {
                 setTransactionStage(TS_REN_BRIDGE_PROCESSING)
+                txStatusToast.closeAll()
+
                 txStatusToast({
                     title: "Transaction submitted on Fantom",
                     description: <>View on <Link href={`https://ftmscan.com/tx/${txHash}`} isExternal>
@@ -398,6 +410,8 @@ const ElysToBtcBridge = ({ issueState }) => {
             // Print RenVM transaction hash
             .on("txHash", (txHash) => {
                 setBridgeStage(REN_EXEC)
+                txStatusToast.closeAll()
+
                 txStatusToast({
                     title: "Transaction confirmed on RenVM",
                     description: <>View on <Link href={`https://explorer.renproject.io/#/tx/${txHash}`} isExternal>
@@ -413,6 +427,8 @@ const ElysToBtcBridge = ({ issueState }) => {
                 console.log(e)
                 setTransactionStage(TS_SWAP_ELYS_RENBTC)
                 setBridgeStage(REN_TX_ON_RENVM)
+                txStatusToast.closeAll()
+
                 txStatusToast({
                     title: e.toString(),
                     status: "error",
@@ -422,6 +438,8 @@ const ElysToBtcBridge = ({ issueState }) => {
             });
 
         setBridgeStage(REN_TX_ON_BTC) // give restart button
+        txStatusToast.closeAll()
+
         txStatusToast({
             title: "🎉 Transaction submitted on Bitcoin",
             description: <>View on <Link href={`https://live.blockcypher.com/btc/address/${btcAddress}`} isExternal>

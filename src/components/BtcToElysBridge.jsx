@@ -111,6 +111,7 @@ const BtcToElysBridge = ({ issueState }) => {
             })
 
             setBridgeStage(REN_WAITING)
+            setBtcIn(Number(btcIn))
         }
 
         // IF NO ACCOUNT LOGGED, RESET PARAMS
@@ -163,6 +164,8 @@ const BtcToElysBridge = ({ issueState }) => {
     useEffect(() => {
         console.log("TxReceipt:", txReceipt)
         if (txReceipt) {
+            txStatusToast.closeAll()
+
             txStatusToast({
                 title: "😄 Transaction Successful",
                 description: "Transaction has been successful. Continue on!",
@@ -203,6 +206,8 @@ const BtcToElysBridge = ({ issueState }) => {
 
     // RAISE TRANSACTION SENT TOAST
     const raiseTxSentToast = (txHash) => {
+        txStatusToast.closeAll()
+
         txStatusToast({
             title: "⏲️ Transaction Sent",
             description: <>View on <Link href={`https://ftmscan.com/tx/${txHash}`} isExternal>
@@ -253,6 +258,8 @@ const BtcToElysBridge = ({ issueState }) => {
 
                 if (deposit.status === 'detected') {
                     setBridgeStage(REN_DEPOSIT_DETECTED)
+                    txStatusToast.closeAll()
+
                     txStatusToast({
                         title: `BTC deposit detected`,
                         description: <>View on <Link href={bridgeTxLinks[0]} isExternal>
@@ -288,6 +295,7 @@ const BtcToElysBridge = ({ issueState }) => {
                     continuousCheckTransactionMined(txHash)
                     console.log(`Fantom transaction: ${String(txHash)}\nSubmitting...`)
                 });
+            txStatusToast.closeAll()
 
             txStatusToast({
                 title: `ELYS deposited`,
