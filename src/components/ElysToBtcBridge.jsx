@@ -118,6 +118,7 @@ const ElysToBtcBridge = ({ issueState }) => {
 
             setTransactionStage(TS_SWAP_ELYS_RENBTC)
             setElysIn(Number(elysIn))
+            setElysIn(String(elysIn))
         }
 
         // IF NO ACCOUNT LOGGED, RESET PARAMS
@@ -252,17 +253,16 @@ const ElysToBtcBridge = ({ issueState }) => {
     // APPROVES ELYS TO THE SWAP CONTRACT
     const approveElysToContract = async () => {
         setTransactionStage(TS_CONFIRM_TX)
-        let tx = elysContract.current.approve(SWAP_CONTRACT_ADDRESS, ethers.BigNumber.from('2').pow('256').sub('1'))
-        tx.then((tx) => {
+        try {
+            let tx = await elysContract.current.approve(SWAP_CONTRACT_ADDRESS, ethers.BigNumber.from('2').pow('256').sub('1'))
             console.log(tx)
             raiseTxSentToast(tx.hash)
             setTransactionStage(TS_TX_CONFIRM_WAIT)
-            continuousCheckTransactionMined(tx.hash, TS_SWAP_ELYS_RENBTC, async () => {
+            continuousCheckTransactionMined(tx, TS_SWAP_ELYS_RENBTC, false, async () => {
                 currentAllowance.current = await elysContract.current.allowance(account, SWAP_CONTRACT_ADDRESS)
                 console.log("Updated allowance:", currentAllowance.current.toString())
             })
-        }).catch((err) => {
-            console.log(TS_APPROVE_ELYS)
+        } catch (err) {
             console.log(err)
             txStatusToast.closeAll()
 
@@ -273,11 +273,11 @@ const ElysToBtcBridge = ({ issueState }) => {
                 duration: 9000,
                 isClosable: true,
             })
-        })
+        }
     }
 
     // SWAPS ELYS TO RenBTC
-    const swapELYSforRenBTC = () => {
+    const swapELYSforRenBTC = async () => {
         setBridgeStage(REN_WAITING)
         console.log(elysIn)
         let elysToSwap = ethers.utils.parseUnits(elysIn, 5)
@@ -296,13 +296,13 @@ const ElysToBtcBridge = ({ issueState }) => {
         }
 
         setTransactionStage(TS_CONFIRM_TX)
-        let txStatus = swapContract.current.swapELYSToRenBTC(elysToSwap)
-        txStatus.then(async (tx) => {
+        try {
+            let tx = await swapContract.current.swapELYSToRenBTC(elysToSwap)
             setTransactionStage(TS_TX_CONFIRM_WAIT)
             console.log(tx)
             raiseTxSentToast(tx.hash)
-            await continuousCheckTransactionMined(tx.hash, TS_REN_BRIDGE)
-        }).catch((err) => {
+            await continuousCheckTransactionMined(tx, TS_REN_BRIDGE, false)
+        } catch (err) {
             setTransactionStage(TS_SWAP_ELYS_RENBTC)
             console.log("Errored while sending swap tx:", err)
             txStatusToast.closeAll()
@@ -314,7 +314,7 @@ const ElysToBtcBridge = ({ issueState }) => {
                 duration: 9000,
                 isClosable: true,
             })
-        })
+        }
     }
 
     // CHECK IF TRANSACTION MINED
@@ -326,8 +326,22 @@ const ElysToBtcBridge = ({ issueState }) => {
     }
 
     // CHECK IF TRANSACTION MINED REPEATEDLY
-    const continuousCheckTransactionMined = async (transactionHash, newTxStage, asyncAction = null) => {
-        let _txReceipt = await isTransactionMined(transactionHash)
+    const continuousCheckTransactionMined = async (txObject, newTxStage, txObjectisHash = true, asyncAction = null) => {
+        let _txReceipt
+        if (txObjectisHash) {
+            try {
+                _txReceipt = await isTransactionMined(txObject)
+            } catch (e) { }
+
+            if (!_txReceipt) setTimeout(continuousCheckTransactionMined(txObject, newTxStage, asyncAction), 1000)
+        } else {
+            try {
+                _txReceipt = await txObject.wait()
+            } catch (e) {
+                console.error("Transaction not found!")
+            }
+        }
+
         if (_txReceipt) {
             setTxReceipt(_txReceipt)
             setTransactionStage(newTxStage)
@@ -335,7 +349,6 @@ const ElysToBtcBridge = ({ issueState }) => {
                 await asyncAction()
             return
         }
-        else setTimeout(continuousCheckTransactionMined(transactionHash, newTxStage, asyncAction), 1000)
     }
 
     // RAISE TRANSACTION SENT TOAST
@@ -484,9 +497,7 @@ const ElysToBtcBridge = ({ issueState }) => {
     const getActionButtonDisabled = () => {
         if (Number(estimatedBtcOut) <= 0)
             return true
-        if (issue.status)
-            return true
-        if (!account && issue.status)
+        if (!account || issue.status)
             return true
         if (transactionStage === TS_APPROVE_ELYS)
             return false

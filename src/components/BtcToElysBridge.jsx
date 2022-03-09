@@ -112,6 +112,7 @@ const BtcToElysBridge = ({ issueState }) => {
 
             setBridgeStage(REN_WAITING)
             setBtcIn(Number(btcIn))
+            setBtcIn(String(btcIn))
         }
 
         // IF NO ACCOUNT LOGGED, RESET PARAMS
@@ -195,13 +196,15 @@ const BtcToElysBridge = ({ issueState }) => {
 
     // CHECK IF TRANSACTION MINED REPEATEDLY
     const continuousCheckTransactionMined = async (transactionHash) => {
-        let txReceipt = await isTransactionMined(transactionHash)
-        if (txReceipt) {
-            setTxReceipt(txReceipt)
-            setBridgeStage(REN_GATEWAY_SHOW)
-            setBridgeCompleted(true)
-        }
-        else setTimeout(continuousCheckTransactionMined(transactionHash), 1000)
+        try {
+            let txReceipt = await isTransactionMined(transactionHash)
+            if (txReceipt) {
+                setTxReceipt(txReceipt)
+                setBridgeStage(REN_GATEWAY_SHOW)
+                setBridgeCompleted(true)
+            }
+            else setTimeout(continuousCheckTransactionMined(transactionHash), 1000)
+        } catch (e) { }
     }
 
     // RAISE TRANSACTION SENT TOAST
