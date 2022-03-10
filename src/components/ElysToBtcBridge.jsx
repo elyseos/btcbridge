@@ -542,7 +542,7 @@ const ElysToBtcBridge = ({ issueState }) => {
                 <Text mb="3">We therefore can provide no assurances for it working and can offer no remedies if anything goes wrong.</Text>
                 <Text mb="3">Additionally due to nature of decentralised exchanges and liquidity pools you may not receive the best possible exchange rates.</Text>
                 <Text mb="5">Please test with small amounts initially.</Text>
-                <Text mb="5">After sending the first transaction, you can access the RenBTC in your wallet. You do not lose your tokens in case you choose not to bridge after the swap.</Text>
+                <Text mb="5">After sending the first transaction, you can access the RenBTC in your wallet. You do not lose your tokens in case you choose not to bridge after the swap. You can also use <Link href='https://bridge.renproject.io' textColor={'orange'}>RenBridge</Link> to bridge your RenBTC afterwards.</Text>
             </Box>
             <Container centerContent alignItems="center" p="4" pt="0" border={"2px"} borderColor={"#ec7019"} rounded="3xl" shadow="lg" maxWidth="600px">
                 <Text my="5" textAlign="left" w="full" fontSize="xl" fontWeight="medium" color={"#ed6f1b"}>ELYS to BTC</Text>
